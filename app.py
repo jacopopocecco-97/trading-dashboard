@@ -125,10 +125,11 @@ with tab1:
 
     # Carica dati attivi
     dati_attive = ws_attive.get_all_records(numericise_ignore=['all'])
-    if not dati_attive:
+    df_attive = pd.DataFrame(dati_attive) if dati_attive else pd.DataFrame()
+    
+    if df_attive.empty:
         st.info("Nessuna posizione attiva al momento.")
     else:
-        df_attive = pd.DataFrame(dati_attive)
         
         # Colonne per l'aggiornamento
         df_display = df_attive.copy()
