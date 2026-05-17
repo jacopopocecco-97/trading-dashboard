@@ -321,7 +321,7 @@ with tab2:
         else:
             frase_entrata = f"I mercati sono attualmente in contrattazione. L'ipotetica entrata a mercato sarebbe esattamente oggi {oggi_str} alle ore {ora_str}."
         
-        prompt_ia = f"""Ricerca titoli a rendimento esplosivo in long da acquistare da rivendere nel giro di qualche giorno massimo qualche settimana. Esponi il rendimento atteso e il rischio sottostante.
+        prompt_ia = f"""Ricerca almeno 3 titoli a rendimento esplosivo in long da acquistare da rivendere nel giro di qualche giorno massimo qualche settimana. Esponi il rendimento atteso e il rischio sottostante.
 Attenzione: in Italia siamo al {oggi_str} ore {ora_str}. Prendi notizie aggiornate e, se disponibili, guardati i valori di pre-market e after-market odierni.
 {frase_entrata}
 In passato hai selezionato azioni giuste se fossero state prese però 1 o 2 giorni indietro. Non fare questo errore.
