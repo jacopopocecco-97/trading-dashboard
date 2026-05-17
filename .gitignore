@@ -2,7 +2,7 @@
 .DS_Store
 __pycache__/
 *.pyc
-.streamlit/
+.streamlit/secrets.toml
 test_gspread.py
 add_sheet.py
 update_sheets.py

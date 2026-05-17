@@ -51,6 +51,23 @@ def get_current_price(ticker):
     except Exception:
         return None
 
+def is_market_open(ticker):
+    """
+    Verifica se il mercato è aperto controllando se ci sono stati scambi 
+    (dati yfinance) negli ultimi 30 minuti.
+    """
+    try:
+        ticker_obj = yf.Ticker(ticker)
+        data = ticker_obj.history(period="1d", interval="1m", prepost=True)
+        if not data.empty:
+            last_time_utc = data.index[-1].tz_convert('UTC')
+            now_utc = pd.Timestamp.utcnow()
+            diff_minutes = (now_utc - last_time_utc).total_seconds() / 60
+            return diff_minutes < 30
+        return True # Fallback, se non abbiamo dati assumiamo aperto
+    except Exception:
+        return False
+
 def get_stock_currency(ticker_symbol):
     try:
         ticker = yf.Ticker(ticker_symbol)
@@ -110,6 +127,10 @@ def run_bot():
                         continue
                         
                     if p_min <= prezzo_reale_borsa <= p_max:
+                        # Verifica se il mercato è effettivamente aperto
+                        if not is_market_open(ticker):
+                            continue
+                            
                         print(f"✅ ORDINE PENDING ESEGUITO per {ticker}! Prezzo attuale {prezzo_reale_borsa:.2f} nel range [{p_min}, {p_max}]")
                         valuta = row.get("Valuta", "USD")
                         sl = to_float_safe(row.get("Stop_Loss", 0))
