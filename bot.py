@@ -137,11 +137,13 @@ def run_bot():
                         tp = to_float_safe(row.get("Take_Profit", 0))
                         sugg = row.get("Suggeritore", "")
                         modello = row.get("Modello", "")
+                        strategia = row.get("Strategia", "")
+                        orizzonte = row.get("Orizzonte_Giorni", "")
                         
                         tasso = get_conversion_rate(get_stock_currency(ticker), valuta)
                         prezzo_entrata_convertito = prezzo_reale_borsa * tasso
                         
-                        nuova_riga_attive = [ticker, round(prezzo_entrata_convertito, 2), valuta, sl, tp, now.strftime("%Y-%m-%d %H:%M:%S"), sugg, modello]
+                        nuova_riga_attive = [ticker, round(prezzo_entrata_convertito, 2), valuta, sl, tp, now.strftime("%Y-%m-%d %H:%M:%S"), sugg, modello, strategia, orizzonte]
                         righe_pending_da_spostare.append({"row_index": index + 2, "dati_attive": nuova_riga_attive})
                         
                 if righe_pending_da_spostare:
@@ -168,6 +170,8 @@ def run_bot():
                 valuta_inserita = row.get("Valuta_Entrata", "USD")
                 suggeritore = row.get("Suggeritore", "")
                 modello = row.get("Modello", "")
+                strategia = row.get("Strategia", "")
+                orizzonte = row.get("Orizzonte_Giorni", "")
                 
                 prezzo_reale_borsa = get_current_price(ticker)
                 if prezzo_reale_borsa is None:
@@ -192,13 +196,13 @@ def run_bot():
                     print(f"⚠️ STOP LOSS HIT per {ticker}! Prezzo: {prezzo_corrente_convertito:.2f}")
                     righe_da_chiudere.append({
                         "row_index": index + 2,
-                        "dati": [ticker, prezzo_ingresso, round(prezzo_corrente_convertito, 2), valuta_inserita, round(pnl, 2), "SL", row.get("Data_Ora", ""), now.strftime("%Y-%m-%d %H:%M:%S"), suggeritore, modello]
+                        "dati": [ticker, prezzo_ingresso, round(prezzo_corrente_convertito, 2), valuta_inserita, round(pnl, 2), "SL", row.get("Data_Ora", ""), now.strftime("%Y-%m-%d %H:%M:%S"), suggeritore, modello, strategia, orizzonte]
                     })
                 elif tp > 0 and prezzo_corrente_convertito >= tp:
                     print(f"✅ TAKE PROFIT HIT per {ticker}! Prezzo: {prezzo_corrente_convertito:.2f}")
                     righe_da_chiudere.append({
                         "row_index": index + 2,
-                        "dati": [ticker, prezzo_ingresso, round(prezzo_corrente_convertito, 2), valuta_inserita, round(pnl, 2), "TP", row.get("Data_Ora", ""), now.strftime("%Y-%m-%d %H:%M:%S"), suggeritore, modello]
+                        "dati": [ticker, prezzo_ingresso, round(prezzo_corrente_convertito, 2), valuta_inserita, round(pnl, 2), "TP", row.get("Data_Ora", ""), now.strftime("%Y-%m-%d %H:%M:%S"), suggeritore, modello, strategia, orizzonte]
                     })
             
             # Esegui la chiusura se necessario

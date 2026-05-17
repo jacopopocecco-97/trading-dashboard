@@ -112,6 +112,10 @@ if 'form_range_min' not in st.session_state:
     st.session_state.form_range_min = 0.0
 if 'form_range_max' not in st.session_state:
     st.session_state.form_range_max = 0.0
+if 'form_strategia' not in st.session_state:
+    st.session_state.form_strategia = "Speculativo"
+if 'form_orizzonte' not in st.session_state:
+    st.session_state.form_orizzonte = 0
 
 # --- TAB 1: DASHBOARD ---
 with tab1:
@@ -313,6 +317,20 @@ with tab2:
         oggi_str = now_rome.strftime("%d %B %Y")
         ora_str = now_rome.strftime("%H:%M")
         
+        # Selectbox for strategy
+        strategia_scelta = st.selectbox("🎯 Scegli l'orizzonte temporale / Strategia per la ricerca:", 
+            ["Speculativo", "Breve termine", "Medio termine", "Lungo termine"])
+            
+        descrizione_strategia = ""
+        if strategia_scelta == "Speculativo":
+            descrizione_strategia = "Ricerca almeno 3 titoli ad altissima volatilità, breakout veloci o meme stocks da acquistare per pura speculazione."
+        elif strategia_scelta == "Breve termine":
+            descrizione_strategia = "Ricerca almeno 3 titoli per un'operatività swing trading da acquistare e rivendere nel giro di qualche giorno o poche settimane, basati su catalyst imminenti."
+        elif strategia_scelta == "Medio termine":
+            descrizione_strategia = "Ricerca almeno 3 titoli (Value o Growth) con solide basi fondamentali per un investimento di medio termine (qualche mese)."
+        elif strategia_scelta == "Lungo termine":
+            descrizione_strategia = "Ricerca almeno 3 titoli per un investimento Buy and Hold a lungo termine (anni) basati su mega-trend strutturali."
+
         # Logica orari mercato USA (considerando Pre e After market: 10:00 - 02:00 orario italiano)
         is_weekend = now_rome.weekday() >= 5
         is_closed_hours = now_rome.hour >= 2 and now_rome.hour < 10
@@ -322,7 +340,7 @@ with tab2:
         else:
             frase_entrata = f"I mercati sono attualmente in contrattazione. L'ipotetica entrata a mercato sarebbe esattamente oggi {oggi_str} alle ore {ora_str}."
         
-        prompt_ia = f"""Ricerca almeno 3 titoli a rendimento esplosivo in long da acquistare da rivendere nel giro di qualche giorno massimo qualche settimana. Esponi il rendimento atteso e il rischio sottostante.
+        prompt_ia = f"""{descrizione_strategia} Esponi il rendimento atteso e il rischio sottostante. Valuta e stima anche l'orizzonte in durata di giorni dell'investimento.
 Attenzione: in Italia siamo al {oggi_str} ore {ora_str}. Prendi notizie aggiornate e, se disponibili, guardati i valori di pre-market e after-market odierni.
 {frase_entrata}
 In passato hai selezionato azioni giuste se fossero state prese però 1 o 2 giorni indietro. Non fare questo errore.
@@ -336,7 +354,9 @@ IMPORTANTE: Alla fine della tua analisi, DEVI fornire i dati dell'azione che hai
   "range_min": 160.0,
   "range_max": 165.0,
   "suggeritore": "Inserisci il tuo nome (es. Gemini o Claude)",
-  "modello": "Inserisci la tua versione esatta (es. Gemini 1.5 Pro, Claude 3 Opus)"
+  "modello": "Inserisci la tua versione esatta (es. Gemini 1.5 Pro, Claude 3 Opus)",
+  "strategia": "{strategia_scelta}",
+  "orizzonte_giorni": 14
 }}
 ```"""
         st.markdown("**1. Copia questo prompt (con le date di oggi aggiornate) e incollalo su Gemini o Claude:**")
@@ -360,6 +380,8 @@ IMPORTANTE: Alla fine della tua analisi, DEVI fornire i dati dell'azione che hai
                     st.session_state.form_modello = dati_ia.get("modello", "AI Generated")
                     st.session_state.form_range_min = float(dati_ia.get("range_min", 0.0))
                     st.session_state.form_range_max = float(dati_ia.get("range_max", 0.0))
+                    st.session_state.form_strategia = dati_ia.get("strategia", "Speculativo")
+                    st.session_state.form_orizzonte = int(dati_ia.get("orizzonte_giorni", 0))
                     st.success("Dati importati con successo! Scorri giù per cercare il prezzo e confermare.")
                 else:
                     st.error("Nessun JSON valido trovato nel testo incollato.")
@@ -376,6 +398,12 @@ IMPORTANTE: Alla fine della tua analisi, DEVI fornire i dati dell'azione che hai
         sl_input = st.number_input("Stop Loss (Prezzo)", min_value=0.0, format="%.2f", step=0.5, key="form_sl")
     with col2:
         tp_input = st.number_input("Take Profit (Prezzo)", min_value=0.0, format="%.2f", step=0.5, key="form_tp")
+        
+    col3, col4 = st.columns(2)
+    with col3:
+        strategia_input = st.selectbox("Strategia", ["Speculativo", "Breve termine", "Medio termine", "Lungo termine"], key="form_strategia")
+    with col4:
+        orizzonte_input = st.number_input("Orizzonte (Giorni)", min_value=0, step=1, key="form_orizzonte")
         
     st.markdown("---")
     st.subheader("Range di Entrata (Ordini Pending)")
@@ -457,7 +485,7 @@ IMPORTANTE: Alla fine della tua analisi, DEVI fornire i dati dell'azione che hai
                     if is_pending:
                         st.write(f"Vuoi inviare l'ordine ai **PENDING** con range di ingresso [{p_min} - {p_max}], SL a {sl_input} e TP a {tp_input}?")
                         if st.button("⏳ Salva come Ordine Pending"):
-                            nuova_riga = [p['ticker'], p_min, p_max, p['valuta'], sl_input, tp_input, data_ora_str, suggeritore_input, modello_input]
+                            nuova_riga = [p['ticker'], p_min, p_max, p['valuta'], sl_input, tp_input, data_ora_str, suggeritore_input, modello_input, strategia_input, orizzonte_input]
                             try:
                                 ws_pending.append_row(nuova_riga, value_input_option='USER_ENTERED')
                                 st.success(f"Ordine pending su {p['ticker']} aggiunto con successo!")
@@ -469,7 +497,7 @@ IMPORTANTE: Alla fine della tua analisi, DEVI fornire i dati dell'azione che hai
                     else:
                         st.write(f"Vuoi confermare l'apertura **IMMEDIATA** a questo prezzo con SL a {sl_input} e TP a {tp_input}?")
                         if st.button("✅ Conferma e Apri Posizione"):
-                            nuova_riga = [p['ticker'], p['prezzo'], p['valuta'], sl_input, tp_input, data_ora_str, suggeritore_input, modello_input]
+                            nuova_riga = [p['ticker'], p['prezzo'], p['valuta'], sl_input, tp_input, data_ora_str, suggeritore_input, modello_input, strategia_input, orizzonte_input]
                             try:
                                 ws_attive.append_row(nuova_riga, value_input_option='USER_ENTERED')
                                 st.success(f"Posizione su {p['ticker']} aggiunta con successo! Aggiornamento dashboard...")
@@ -499,7 +527,7 @@ IMPORTANTE: Alla fine della tua analisi, DEVI fornire i dati dell'azione che hai
                         p_min = round(prezzo_input * 0.99, 2)
                         p_max = round(prezzo_input * 1.01, 2)
                         
-                    nuova_riga = [ticker_input, p_min, p_max, valuta_input, sl_input, tp_input, data_ora_str, suggeritore_input, modello_input]
+                    nuova_riga = [ticker_input, p_min, p_max, valuta_input, sl_input, tp_input, data_ora_str, suggeritore_input, modello_input, strategia_input, orizzonte_input]
                     try:
                         ws_pending.append_row(nuova_riga, value_input_option='USER_ENTERED')
                         st.success(f"Ordine pending su {ticker_input} aggiunto con successo!")
@@ -508,7 +536,7 @@ IMPORTANTE: Alla fine della tua analisi, DEVI fornire i dati dell'azione che hai
                     except Exception as e:
                         st.error(f"Errore durante il salvataggio: {e}")
                 else:
-                    nuova_riga = [ticker_input, prezzo_input, valuta_input, sl_input, tp_input, data_ora_str, suggeritore_input, modello_input]
+                    nuova_riga = [ticker_input, prezzo_input, valuta_input, sl_input, tp_input, data_ora_str, suggeritore_input, modello_input, strategia_input, orizzonte_input]
                     try:
                         ws_attive.append_row(nuova_riga, value_input_option='USER_ENTERED')
                         st.success(f"Posizione manuale su {ticker_input} aggiunta con successo! Aggiornamento dashboard...")
