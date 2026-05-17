@@ -64,7 +64,7 @@ def is_market_open(ticker):
             now_utc = pd.Timestamp.now('UTC')
             diff_minutes = (now_utc - last_time_utc).total_seconds() / 60
             return diff_minutes < 30
-        return True # Fallback, se non abbiamo dati assumiamo aperto
+        return False # Fallback prudenziale, se non abbiamo dati assumiamo chiuso
     except Exception:
         return False
 
