@@ -3,3 +3,6 @@
 __pycache__/
 *.pyc
 .streamlit/
+test_gspread.py
+add_sheet.py
+update_sheets.py
