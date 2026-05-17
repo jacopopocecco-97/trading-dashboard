@@ -118,7 +118,7 @@ with tab1:
     with col_t1:
         st.header("Posizioni Attive")
     with col_t2:
-        if st.button("🔄 Aggiorna Dati", use_container_width=True):
+        if st.button("🔄 Aggiorna Dati", width="stretch"):
             st.rerun()
             
     st.caption(f"Ultimo aggiornamento: {datetime.now().strftime('%H:%M:%S')}")
@@ -187,7 +187,7 @@ with tab1:
         df_display["P/L %"] = pnl_perc_list
         
         # Mostra la tabella
-        st.dataframe(df_display, use_container_width=True)
+        st.dataframe(df_display, width="stretch")
 
         # --- SEZIONE GESTIONE (ELIMINA POSIZIONE) ---
         st.markdown("<br>", unsafe_allow_html=True)
@@ -221,7 +221,7 @@ with tab1:
         st.info("Nessun ordine pending al momento.")
     else:
         df_pending = pd.DataFrame(dati_pending)
-        st.dataframe(df_pending, use_container_width=True)
+        st.dataframe(df_pending, width="stretch")
         
         with st.expander("🗑️ Annulla un ordine pending"):
             col_delp1, col_delp2 = st.columns([3, 1])
@@ -245,7 +245,7 @@ with tab1:
     st.header("Storico Posizioni Chiuse")
     dati_storico = ws_storico.get_all_records(numericise_ignore=['all'])
     if dati_storico:
-        st.dataframe(pd.DataFrame(dati_storico), use_container_width=True)
+        st.dataframe(pd.DataFrame(dati_storico), width="stretch")
     else:
         st.info("Lo storico è vuoto.")
 
@@ -285,7 +285,7 @@ with tab1:
                             y=alt.Y('Prezzo:Q', title='Prezzo Registrato', scale=alt.Scale(zero=False)),
                             tooltip=['Data_Ora', 'Prezzo']
                         ).properties(height=350)
-                        st.altair_chart(chart_prezzi, use_container_width=True)
+                        st.altair_chart(chart_prezzi, width="stretch")
                     else:
                         st.info(f"Nessun prezzo registrato ancora per {ticker_selezionato}. Verrà registrato al prossimo aggiornamento (se l'azione è attiva).")
             else:
@@ -584,7 +584,7 @@ with tab3:
                     y=alt.Y('P_L_Complessivo:Q', title='P&L Complessivo %', scale=alt.Scale(zero=False)),
                     tooltip=['Data_Ora', 'P_L_Complessivo', 'P_L_Aperto', 'P_L_Chiuso']
                 ).properties(height=350)
-                st.altair_chart(chart_portafoglio, use_container_width=True)
+                st.altair_chart(chart_portafoglio, width="stretch")
             else:
                 st.info("Nessun dato registrato nello Storico Portafoglio. Il bot inizierà a popolarlo a breve.")
                 
@@ -612,7 +612,7 @@ with tab3:
                         y=alt.Y('P_L_Perc', title='Profitto/Perdita Media %'),
                         color=alt.condition(alt.datum.P_L_Perc > 0, alt.value('#2ecc71'), alt.value('#e74c3c'))
                     ).properties(height=300)
-                    st.altair_chart(chart_sugg, use_container_width=True)
+                    st.altair_chart(chart_sugg, width="stretch")
                 else:
                     st.info("Nessun suggeritore inserito nelle operazioni.")
         
@@ -626,6 +626,6 @@ with tab3:
                         y=alt.Y('P_L_Perc', title='Profitto/Perdita Media %'),
                         color=alt.condition(alt.datum.P_L_Perc > 0, alt.value('#2ecc71'), alt.value('#e74c3c'))
                     ).properties(height=300)
-                    st.altair_chart(chart_mod, use_container_width=True)
+                    st.altair_chart(chart_mod, width="stretch")
                 else:
                     st.info("Nessun modello inserito nelle operazioni.")
