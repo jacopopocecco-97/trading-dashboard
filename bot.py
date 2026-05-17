@@ -61,7 +61,7 @@ def is_market_open(ticker):
         data = ticker_obj.history(period="1d", interval="1m", prepost=True)
         if not data.empty:
             last_time_utc = data.index[-1].tz_convert('UTC')
-            now_utc = pd.Timestamp.utcnow()
+            now_utc = pd.Timestamp.now('UTC')
             diff_minutes = (now_utc - last_time_utc).total_seconds() / 60
             return diff_minutes < 30
         return True # Fallback, se non abbiamo dati assumiamo aperto
