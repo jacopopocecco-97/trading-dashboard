@@ -36,10 +36,11 @@ def get_gspread_client():
         st.error(f"Errore di connessione a Google Sheets. Verifica i Secrets. Dettagli: {e}")
         return None
 
-def get_worksheet(client, ws_name):
+@st.cache_resource
+def get_worksheet(_client, ws_name):
     try:
         # Usiamo l'ID univoco così non importa se cambi il nome o togli gli spazi
-        sheet = client.open_by_key("1Y4qUgzJvrF6IE0Bv9DQzAo-SOkHqsx2CHQW-fBEoR3w")
+        sheet = _client.open_by_key("1Y4qUgzJvrF6IE0Bv9DQzAo-SOkHqsx2CHQW-fBEoR3w")
         return sheet.worksheet(ws_name)
     except Exception as e:
         st.error(f"Errore nell'aprire il foglio '{ws_name}'. Assicurati che esista. Dettagli: {e}")
