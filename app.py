@@ -519,35 +519,44 @@ IMPORTANTE: Alla fine della tua analisi, DEVI fornire i dati dell'azione che hai
 with tab3:
     st.header("Statistiche e Grafici di Portafoglio")
     
-    # Carichiamo di nuovo lo storico aggiornato per fare statistiche su dati sicuri
+    # Pulizia e conversione dati
+    def to_float_safe(val):
+        if isinstance(val, str):
+            val = val.replace(',', '.')
+        try:
+            return float(val)
+        except:
+            return 0.0
+
+    # Carichiamo lo storico
     dati_stats = ws_storico.get_all_records(numericise_ignore=['all'])
-    
-    if not dati_stats:
-        st.info("Non ci sono ancora operazioni concluse nello Storico per poter generare i grafici. Chiudi qualche operazione!")
-    else:
-        df_stats = pd.DataFrame(dati_stats)
-        
-        # Pulizia e conversione dati
-        def to_float_safe(val):
-            if isinstance(val, str):
-                val = val.replace(',', '.')
-            try:
-                return float(val)
-            except:
-                return 0.0
-                
+    df_stats = pd.DataFrame(dati_stats) if dati_stats else pd.DataFrame()
+    if not df_stats.empty:
         df_stats['P_L_Perc'] = df_stats.get('P_L_Perc', pd.Series([0]*len(df_stats))).apply(to_float_safe)
         
+    # Carichiamo le posizioni aperte dalla dashboard (se esistono)
+    df_aperte_stats = pd.DataFrame()
+    if 'df_display' in locals() and not df_display.empty and 'P/L %' in df_display.columns:
+        df_aperte_stats = df_display[['Ticker', 'P/L %', 'Suggeritore', 'Modello']].copy()
+        df_aperte_stats.rename(columns={'P/L %': 'P_L_Perc'}, inplace=True)
+        df_aperte_stats = df_aperte_stats.dropna(subset=['P_L_Perc'])
+        
+    # Unione dei due dataframe
+    df_combined = pd.concat([df_stats, df_aperte_stats], ignore_index=True)
+    
+    if df_combined.empty:
+        st.info("Non ci sono operazioni (né attive né chiuse) per poter generare le statistiche.")
+    else:
         # Metriche in alto
-        totale = len(df_stats)
-        vincenti = len(df_stats[df_stats['P_L_Perc'] > 0])
+        totale = len(df_combined)
+        vincenti = len(df_combined[df_combined['P_L_Perc'] > 0])
         win_rate = (vincenti / totale * 100) if totale > 0 else 0
-        profitto_medio = df_stats[df_stats['P_L_Perc'] > 0]['P_L_Perc'].mean()
-        perdita_media = df_stats[df_stats['P_L_Perc'] <= 0]['P_L_Perc'].mean()
+        profitto_medio = df_combined[df_combined['P_L_Perc'] > 0]['P_L_Perc'].mean()
+        perdita_media = df_combined[df_combined['P_L_Perc'] <= 0]['P_L_Perc'].mean()
         
         col_m1, col_m2, col_m3, col_m4 = st.columns(4)
-        col_m1.metric("Totale Operazioni", totale)
-        col_m2.metric("Win Rate", f"{win_rate:.1f}%")
+        col_m1.metric("Totale Operazioni (Aperte+Chiuse)", totale)
+        col_m2.metric("Win Rate Globale", f"{win_rate:.1f}%")
         col_m3.metric("Profitto Medio (Winner)", f"+{profitto_medio:.2f}%" if pd.notna(profitto_medio) else "0%")
         col_m4.metric("Perdita Media (Loser)", f"{perdita_media:.2f}%" if pd.notna(perdita_media) else "0%")
         
@@ -594,8 +603,8 @@ with tab3:
         col_g1, col_g2 = st.columns(2)
         with col_g1:
             st.subheader("Profitto Medio per Suggeritore")
-            if 'Suggeritore' in df_stats.columns:
-                df_sugg = df_stats[df_stats['Suggeritore'] != ''].groupby('Suggeritore')['P_L_Perc'].mean().reset_index()
+            if 'Suggeritore' in df_combined.columns:
+                df_sugg = df_combined[df_combined['Suggeritore'] != ''].groupby('Suggeritore')['P_L_Perc'].mean().reset_index()
                 if not df_sugg.empty:
                     chart_sugg = alt.Chart(df_sugg).mark_bar().encode(
                         x=alt.X('Suggeritore', sort='-y', title='Chi ha dato il segnale?'),
@@ -604,12 +613,12 @@ with tab3:
                     ).properties(height=300)
                     st.altair_chart(chart_sugg, use_container_width=True)
                 else:
-                    st.info("Nessun suggeritore inserito nelle operazioni chiuse.")
+                    st.info("Nessun suggeritore inserito nelle operazioni.")
         
         with col_g2:
             st.subheader("Performance per Modello")
-            if 'Modello' in df_stats.columns:
-                df_mod = df_stats[df_stats['Modello'] != ''].groupby('Modello')['P_L_Perc'].mean().reset_index()
+            if 'Modello' in df_combined.columns:
+                df_mod = df_combined[df_combined['Modello'] != ''].groupby('Modello')['P_L_Perc'].mean().reset_index()
                 if not df_mod.empty:
                     chart_mod = alt.Chart(df_mod).mark_bar().encode(
                         x=alt.X('Modello', sort='-y', title='Strategia usata'),
@@ -618,4 +627,4 @@ with tab3:
                     ).properties(height=300)
                     st.altair_chart(chart_mod, use_container_width=True)
                 else:
-                    st.info("Nessun modello inserito nelle operazioni chiuse.")
+                    st.info("Nessun modello inserito nelle operazioni.")
