@@ -345,7 +345,7 @@ Attenzione: in Italia siamo al {oggi_str} ore {ora_str}. Prendi notizie aggiorna
 {frase_entrata}
 In passato hai selezionato azioni giuste se fossero state prese però 1 o 2 giorni indietro. Non fare questo errore.
 
-IMPORTANTE: Alla fine della tua analisi, DEVI fornire i dati dell'azione che hai scelto per l'investimento ESCLUSIVAMENTE in questo formato JSON, racchiuso in un blocco di codice. Sostituisci i valori ma mantieni rigorosamente questa struttura:
+IMPORTANTE: Alla fine della tua analisi, DEVI fornire i dati delle azioni che hai scelto per l'investimento ESCLUSIVAMENTE in questo formato JSON, racchiuso in un blocco di codice. Sostituisci i valori ma mantieni rigorosamente questa struttura:
 ```json
 {{
   "ticker": "AAPL",
