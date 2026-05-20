@@ -479,7 +479,7 @@ IMPORTANTE: Alla fine della tua analisi, DEVI fornire i dati delle azioni che ha
                         p_min = round(p['prezzo'] * 0.99, 2)
                         p_max = round(p['prezzo'] * 1.01, 2)
                         is_pending = True
-                    elif range_min_input > 0 and range_max_input > 0:
+                    elif range_min_input > 0 or range_max_input > 0:
                         is_pending = True
                         
                     if is_pending:
@@ -511,7 +511,7 @@ IMPORTANTE: Alla fine della tua analisi, DEVI fornire i dati delle azioni che ha
                 
     else:
         # Modalità Manuale (Prezzo > 0)
-        is_pending = (range_min_input > 0 and range_max_input > 0) or auto_range
+        is_pending = (range_min_input > 0 or range_max_input > 0) or auto_range
         label_btn = "⏳ Salva come Ordine Pending" if is_pending else "✅ Salva Posizione Manuale"
         
         if st.button(label_btn):
@@ -563,31 +563,76 @@ with tab3:
     df_stats = pd.DataFrame(dati_stats) if dati_stats else pd.DataFrame()
     if not df_stats.empty:
         df_stats['P_L_Perc'] = df_stats.get('P_L_Perc', pd.Series([0]*len(df_stats))).apply(to_float_safe)
+        if 'Data_Ora_Entrata' in df_stats.columns:
+            df_stats.rename(columns={'Data_Ora_Entrata': 'Data_Ora'}, inplace=True)
         
     # Carichiamo le posizioni aperte dalla dashboard (se esistono)
     df_aperte_stats = pd.DataFrame()
     if 'df_display' in locals() and not df_display.empty and 'P/L %' in df_display.columns:
-        df_aperte_stats = df_display[['Ticker', 'P/L %', 'Suggeritore', 'Modello']].copy()
+        df_aperte_stats = df_display[['Ticker', 'P/L %', 'Suggeritore', 'Modello', 'Data_Ora']].copy()
         df_aperte_stats.rename(columns={'P/L %': 'P_L_Perc'}, inplace=True)
         df_aperte_stats = df_aperte_stats.dropna(subset=['P_L_Perc'])
         
     # Unione dei due dataframe
     df_combined = pd.concat([df_stats, df_aperte_stats], ignore_index=True)
     
-    # Menu a tendina per filtrare le statistiche
-    tipo_operazioni = st.selectbox("📊 Seleziona le operazioni da analizzare:", 
-                                   ["Totale (Media)", "Posizioni Aperte", "Posizioni Chiuse"])
-                                   
-    # Filtriamo i dati in base alla selezione
+    # Menu a tendina e Date Picker per filtrare le statistiche in colonne
+    col_f1, col_f2 = st.columns(2)
+    
+    with col_f1:
+        tipo_operazioni = st.selectbox("📊 Seleziona le operazioni da analizzare:", 
+                                       ["Totale (Media)", "Posizioni Aperte", "Posizioni Chiuse"])
+                                       
+    # Filtriamo provvisoriamente i dati in base alla tipologia selezionata per calcolare i limiti del calendario
     if tipo_operazioni == "Posizioni Aperte":
-        df_filtered = df_aperte_stats
+        df_base = df_aperte_stats.copy() if not df_aperte_stats.empty else pd.DataFrame()
     elif tipo_operazioni == "Posizioni Chiuse":
-        df_filtered = df_stats
+        df_base = df_stats.copy() if not df_stats.empty else pd.DataFrame()
     else:
-        df_filtered = df_combined
+        df_base = df_combined.copy() if not df_combined.empty else pd.DataFrame()
         
+    date_range = None
+    if not df_base.empty and 'Data_Ora' in df_base.columns:
+        df_base['Data_Ora_parsed'] = pd.to_datetime(df_base['Data_Ora'], errors='coerce')
+        df_base = df_base.dropna(subset=['Data_Ora_parsed'])
+        
+        if not df_base.empty:
+            min_date = df_base['Data_Ora_parsed'].min().date()
+            max_date = df_base['Data_Ora_parsed'].max().date()
+        else:
+            min_date = datetime.today().date()
+            max_date = datetime.today().date()
+            
+        with col_f2:
+            valore_iniziale = (min_date, max_date)
+            date_range = st.date_input(
+                "📅 Filtra per data di acquisto (Range):",
+                value=valore_iniziale,
+                min_value=min_date,
+                max_value=max_date
+            )
+    else:
+        with col_f2:
+            st.info("Nessuna data di acquisto disponibile per il filtraggio.")
+            
+    # Filtriamo definitivamente df_filtered in base a tipologia + range di date
+    df_filtered = df_base.copy() if not df_base.empty else pd.DataFrame()
+    
+    if not df_filtered.empty and date_range:
+        if isinstance(date_range, (tuple, list)) and len(date_range) == 2:
+            start_date, end_date = date_range
+            start_ts = pd.Timestamp(start_date)
+            end_ts = pd.Timestamp(end_date) + pd.Timedelta(days=1) - pd.Timedelta(seconds=1)
+            df_filtered = df_filtered[
+                (df_filtered['Data_Ora_parsed'] >= start_ts) & 
+                (df_filtered['Data_Ora_parsed'] <= end_ts)
+            ]
+        elif isinstance(date_range, (tuple, list)) and len(date_range) == 1:
+            start_ts = pd.Timestamp(date_range[0])
+            df_filtered = df_filtered[df_filtered['Data_Ora_parsed'] >= start_ts]
+
     if df_filtered.empty:
-        st.info(f"Non ci sono operazioni per la selezione '{tipo_operazioni}' per poter generare le statistiche.")
+        st.info(f"Non ci sono operazioni per la selezione '{tipo_operazioni}' e il range di date selezionato.")
     else:
         # Metriche in alto
         totale = len(df_filtered)
@@ -645,13 +690,36 @@ with tab3:
             st.divider()
             st.subheader("P/L Cumulativo (Solo Operazioni Chiuse)")
             
-            # Grafico andamento cumulativo
-            if 'Data_Ora_Uscita' in df_stats.columns and not df_stats.empty:
-                df_sort = df_stats.sort_values(by='Data_Ora_Uscita').copy()
+            # Filtra lo storico in base alla stessa data di acquisto selezionata
+            df_stats_filtered = df_stats.copy() if not df_stats.empty else pd.DataFrame()
+            if not df_stats_filtered.empty and date_range:
+                df_stats_filtered['Data_Ora_parsed'] = pd.to_datetime(df_stats_filtered['Data_Ora'], errors='coerce')
+                df_stats_filtered = df_stats_filtered.dropna(subset=['Data_Ora_parsed'])
+                if isinstance(date_range, (tuple, list)) and len(date_range) == 2:
+                    start_date, end_date = date_range
+                    start_ts = pd.Timestamp(start_date)
+                    end_ts = pd.Timestamp(end_date) + pd.Timedelta(days=1) - pd.Timedelta(seconds=1)
+                    df_stats_filtered = df_stats_filtered[
+                        (df_stats_filtered['Data_Ora_parsed'] >= start_ts) & 
+                        (df_stats_filtered['Data_Ora_parsed'] <= end_ts)
+                    ]
+                elif isinstance(date_range, (tuple, list)) and len(date_range) == 1:
+                    start_ts = pd.Timestamp(date_range[0])
+                    df_stats_filtered = df_stats_filtered[df_stats_filtered['Data_Ora_parsed'] >= start_ts]
+
+            # Grafico andamento cumulativo con Altair Premium
+            if not df_stats_filtered.empty and 'Data_Ora_Uscita' in df_stats_filtered.columns:
+                df_sort = df_stats_filtered.sort_values(by='Data_Ora_Uscita').copy()
                 df_sort['Cumulativo'] = df_sort['P_L_Perc'].cumsum()
-                st.line_chart(df_sort.set_index('Data_Ora_Uscita')['Cumulativo'])
+                
+                chart_cum = alt.Chart(df_sort).mark_line(point=True, color='#2ecc71').encode(
+                    x=alt.X('Data_Ora_Uscita:T', title='Data di Chiusura'),
+                    y=alt.Y('Cumulativo:Q', title='P&L Cumulativo %'),
+                    tooltip=['Data_Ora_Uscita', 'Ticker', 'P_L_Perc', 'Cumulativo']
+                ).properties(height=350)
+                st.altair_chart(chart_cum, width="stretch")
             else:
-                st.warning("Data Uscita mancante nello storico o storico vuoto.")
+                st.warning("Nessuna operazione chiusa trovata in questo intervallo di date o storico vuoto.")
             
         st.divider()
         
@@ -659,27 +727,37 @@ with tab3:
         with col_g1:
             st.subheader("Profitto Medio per Suggeritore")
             if 'Suggeritore' in df_filtered.columns:
-                df_sugg = df_filtered[df_filtered['Suggeritore'] != ''].groupby('Suggeritore')['P_L_Perc'].mean().reset_index()
-                if not df_sugg.empty:
-                    chart_sugg = alt.Chart(df_sugg).mark_bar().encode(
-                        x=alt.X('Suggeritore', sort='-y', title='Chi ha dato il segnale?'),
-                        y=alt.Y('P_L_Perc', title='Profitto/Perdita Media %'),
-                        color=alt.condition(alt.datum.P_L_Perc > 0, alt.value('#2ecc71'), alt.value('#e74c3c'))
-                    ).properties(height=300)
-                    st.altair_chart(chart_sugg, width="stretch")
+                df_sugg_clean = df_filtered[df_filtered['Suggeritore'].notna() & (df_filtered['Suggeritore'] != '')]
+                if not df_sugg_clean.empty:
+                    df_sugg = df_sugg_clean.groupby('Suggeritore')['P_L_Perc'].mean().reset_index()
+                    if not df_sugg.empty:
+                        chart_sugg = alt.Chart(df_sugg).mark_bar().encode(
+                            x=alt.X('Suggeritore', sort='-y', title='Chi ha dato il segnale?'),
+                            y=alt.Y('P_L_Perc', title='Profitto/Perdita Media %'),
+                            color=alt.condition(alt.datum.P_L_Perc > 0, alt.value('#2ecc71'), alt.value('#e74c3c')),
+                            tooltip=['Suggeritore', alt.Tooltip('P_L_Perc', format='.2f')]
+                        ).properties(height=300)
+                        st.altair_chart(chart_sugg, width="stretch")
+                    else:
+                        st.info("Nessun suggeritore con performance calcolabili.")
                 else:
                     st.info("Nessun suggeritore inserito nelle operazioni.")
         
         with col_g2:
             st.subheader("Performance per Modello")
             if 'Modello' in df_filtered.columns:
-                df_mod = df_filtered[df_filtered['Modello'] != ''].groupby('Modello')['P_L_Perc'].mean().reset_index()
-                if not df_mod.empty:
-                    chart_mod = alt.Chart(df_mod).mark_bar().encode(
-                        x=alt.X('Modello', sort='-y', title='Strategia usata'),
-                        y=alt.Y('P_L_Perc', title='Profitto/Perdita Media %'),
-                        color=alt.condition(alt.datum.P_L_Perc > 0, alt.value('#2ecc71'), alt.value('#e74c3c'))
-                    ).properties(height=300)
-                    st.altair_chart(chart_mod, width="stretch")
+                df_mod_clean = df_filtered[df_filtered['Modello'].notna() & (df_filtered['Modello'] != '')]
+                if not df_mod_clean.empty:
+                    df_mod = df_mod_clean.groupby('Modello')['P_L_Perc'].mean().reset_index()
+                    if not df_mod.empty:
+                        chart_mod = alt.Chart(df_mod).mark_bar().encode(
+                            x=alt.X('Modello', sort='-y', title='Strategia usata'),
+                            y=alt.Y('P_L_Perc', title='Profitto/Perdita Media %'),
+                            color=alt.condition(alt.datum.P_L_Perc > 0, alt.value('#2ecc71'), alt.value('#e74c3c')),
+                            tooltip=['Modello', alt.Tooltip('P_L_Perc', format='.2f')]
+                        ).properties(height=300)
+                        st.altair_chart(chart_mod, width="stretch")
+                    else:
+                        st.info("Nessun modello con performance calcolabili.")
                 else:
                     st.info("Nessun modello inserito nelle operazioni.")

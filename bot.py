@@ -126,12 +126,22 @@ def run_bot():
                     if prezzo_reale_borsa is None:
                         continue
                         
-                    if p_min <= prezzo_reale_borsa <= p_max:
+                    # Controlla se il prezzo attuale soddisfa i limiti impostati
+                    condizione_prezzo = False
+                    if p_min > 0 and p_max > 0:
+                        condizione_prezzo = (p_min <= prezzo_reale_borsa <= p_max)
+                    elif p_min > 0:
+                        condizione_prezzo = (prezzo_reale_borsa >= p_min)
+                    elif p_max > 0:
+                        condizione_prezzo = (prezzo_reale_borsa <= p_max)
+                        
+                    if condizione_prezzo:
                         # Verifica se il mercato è effettivamente aperto
                         if not is_market_open(ticker):
                             continue
                             
-                        print(f"✅ ORDINE PENDING ESEGUITO per {ticker}! Prezzo attuale {prezzo_reale_borsa:.2f} nel range [{p_min}, {p_max}]")
+                        range_str = f"[{p_min}, {p_max}]" if (p_min > 0 and p_max > 0) else (f">= {p_min}" if p_min > 0 else f"<= {p_max}")
+                        print(f"✅ ORDINE PENDING ESEGUITO per {ticker}! Prezzo attuale {prezzo_reale_borsa:.2f} soddisfatto dalla condizione {range_str}")
                         valuta = row.get("Valuta", "USD")
                         sl = to_float_safe(row.get("Stop_Loss", 0))
                         tp = to_float_safe(row.get("Take_Profit", 0))
