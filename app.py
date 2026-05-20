@@ -60,12 +60,61 @@ def get_current_price(ticker_symbol):
     except Exception:
         return None
 
+# Mappa suffissi ticker -> valuta per dedurre la valuta corretta
+# senza dipendere dall'API yfinance (che può fallire e ritornare 'USD' erroneamente)
+SUFFIX_CURRENCY_MAP = {
+    ".MI": "EUR", ".PA": "EUR", ".DE": "EUR", ".AS": "EUR", ".BR": "EUR",
+    ".LS": "EUR", ".MC": "EUR", ".HE": "EUR", ".VI": "EUR", ".AT": "EUR",
+    ".IR": "EUR", ".L": "GBP", ".SW": "CHF", ".TO": "CAD", ".AX": "AUD",
+    ".HK": "HKD", ".T": "JPY", ".SS": "CNY", ".SZ": "CNY", ".KS": "KRW",
+    ".NS": "INR", ".BO": "INR", ".SA": "BRL", ".MX": "MXN", ".ST": "SEK",
+    ".CO": "DKK", ".OL": "NOK",
+}
+
+_currency_cache = {}
+
+def _get_currency_from_suffix(ticker_symbol):
+    """Deduce la valuta dal suffisso del ticker (es. .MI -> EUR)."""
+    ticker_upper = ticker_symbol.upper()
+    for suffix, currency in SUFFIX_CURRENCY_MAP.items():
+        if ticker_upper.endswith(suffix.upper()):
+            return currency
+    return None
+
 def get_stock_currency(ticker_symbol):
+    """
+    Ottiene la valuta di quotazione. Usa il suffisso del ticker come fallback
+    per evitare il bug critico dove yfinance ritorna 'USD' per errore su titoli europei.
+    """
+    if ticker_symbol in _currency_cache:
+        return _currency_cache[ticker_symbol]
+    
+    suffix_currency = _get_currency_from_suffix(ticker_symbol)
+    
     try:
         ticker = yf.Ticker(ticker_symbol)
-        info = ticker.info
-        return info.get("currency", "USD")
+        api_currency = ticker.info.get("currency", None)
+        
+        if api_currency and api_currency != "USD":
+            _currency_cache[ticker_symbol] = api_currency
+            return api_currency
+        elif api_currency == "USD":
+            if suffix_currency and suffix_currency != "USD":
+                _currency_cache[ticker_symbol] = suffix_currency
+                return suffix_currency
+            _currency_cache[ticker_symbol] = "USD"
+            return "USD"
+        else:
+            if suffix_currency:
+                _currency_cache[ticker_symbol] = suffix_currency
+                return suffix_currency
+            _currency_cache[ticker_symbol] = "USD"
+            return "USD"
     except:
+        if suffix_currency:
+            _currency_cache[ticker_symbol] = suffix_currency
+            return suffix_currency
+        _currency_cache[ticker_symbol] = "USD"
         return "USD"
 
 def get_conversion_rate(from_curr, to_curr):
