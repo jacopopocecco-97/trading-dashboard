@@ -569,27 +569,59 @@ with tab3:
     # Carichiamo le posizioni aperte dalla dashboard (se esistono)
     df_aperte_stats = pd.DataFrame()
     if 'df_display' in locals() and not df_display.empty and 'P/L %' in df_display.columns:
-        df_aperte_stats = df_display[['Ticker', 'P/L %', 'Suggeritore', 'Modello', 'Data_Ora']].copy()
+        colonne_da_prendere = ['Ticker', 'P/L %', 'Suggeritore', 'Modello', 'Data_Ora']
+        if 'Strategia' in df_display.columns:
+            colonne_da_prendere.append('Strategia')
+        df_aperte_stats = df_display[colonne_da_prendere].copy()
+        if 'Strategia' not in df_aperte_stats.columns:
+            df_aperte_stats['Strategia'] = ''
         df_aperte_stats.rename(columns={'P/L %': 'P_L_Perc'}, inplace=True)
         df_aperte_stats = df_aperte_stats.dropna(subset=['P_L_Perc'])
         
     # Unione dei due dataframe
     df_combined = pd.concat([df_stats, df_aperte_stats], ignore_index=True)
     
-    # Menu a tendina e Date Picker per filtrare le statistiche in colonne
-    col_f1, col_f2 = st.columns(2)
+    # Definizione funzione di matching per le strategie tollerante a variazioni
+    def match_strategia(val):
+        if not isinstance(val, str):
+            return False
+        val_clean = val.strip().lower()
+        filtro_clean = strategia_filtro.strip().lower()
+        
+        if val_clean == filtro_clean:
+            return True
+        if "breve" in filtro_clean and "breve" in val_clean:
+            return True
+        if "medio" in filtro_clean and "medio" in val_clean:
+            return True
+        if "lungo" in filtro_clean and "lungo" in val_clean:
+            return True
+        if "speculativo" in filtro_clean and "speculativo" in val_clean:
+            return True
+        return False
+
+    # Menu a tendina e Date Picker per filtrare le statistiche in 3 colonne
+    col_f1, col_f2, col_f3 = st.columns(3)
     
     with col_f1:
         tipo_operazioni = st.selectbox("📊 Seleziona le operazioni da analizzare:", 
                                        ["Totale (Media)", "Posizioni Aperte", "Posizioni Chiuse"])
                                        
-    # Filtriamo provvisoriamente i dati in base alla tipologia selezionata per calcolare i limiti del calendario
+    with col_f2:
+        strategia_filtro = st.selectbox("🎯 Filtra per strategia:", 
+                                       ["Tutte", "Speculativo", "Breve termine", "Medio termine", "Lungo termine"])
+                                       
+    # Filtriamo provvisoriamente i dati in base alla tipologia selezionata
     if tipo_operazioni == "Posizioni Aperte":
         df_base = df_aperte_stats.copy() if not df_aperte_stats.empty else pd.DataFrame()
     elif tipo_operazioni == "Posizioni Chiuse":
         df_base = df_stats.copy() if not df_stats.empty else pd.DataFrame()
     else:
         df_base = df_combined.copy() if not df_combined.empty else pd.DataFrame()
+        
+    # Filtriamo per strategia prima di calcolare i limiti temporali
+    if strategia_filtro != "Tutte" and not df_base.empty and 'Strategia' in df_base.columns:
+        df_base = df_base[df_base['Strategia'].apply(match_strategia)]
         
     date_range = None
     if not df_base.empty and 'Data_Ora' in df_base.columns:
@@ -603,7 +635,7 @@ with tab3:
             min_date = datetime.today().date()
             max_date = datetime.today().date()
             
-        with col_f2:
+        with col_f3:
             valore_iniziale = (min_date, max_date)
             date_range = st.date_input(
                 "📅 Filtra per data di acquisto (Range):",
@@ -612,10 +644,10 @@ with tab3:
                 max_value=max_date
             )
     else:
-        with col_f2:
-            st.info("Nessuna data di acquisto disponibile per il filtraggio.")
+        with col_f3:
+            st.info("Nessuna data di acquisto disponibile per questa selezione.")
             
-    # Filtriamo definitivamente df_filtered in base a tipologia + range di date
+    # Filtriamo definitivamente df_filtered in base a tipologia + strategia + range di date
     df_filtered = df_base.copy() if not df_base.empty else pd.DataFrame()
     
     if not df_filtered.empty and date_range:
@@ -632,7 +664,7 @@ with tab3:
             df_filtered = df_filtered[df_filtered['Data_Ora_parsed'] >= start_ts]
 
     if df_filtered.empty:
-        st.info(f"Non ci sono operazioni per la selezione '{tipo_operazioni}' e il range di date selezionato.")
+        st.info(f"Non ci sono operazioni per la selezione '{tipo_operazioni}', strategia '{strategia_filtro}' e range selezionato.")
     else:
         # Metriche in alto
         totale = len(df_filtered)
@@ -690,8 +722,14 @@ with tab3:
             st.divider()
             st.subheader("P/L Cumulativo (Solo Operazioni Chiuse)")
             
-            # Filtra lo storico in base alla stessa data di acquisto selezionata
+            # Filtra lo storico in base a strategia e data di acquisto selezionate
             df_stats_filtered = df_stats.copy() if not df_stats.empty else pd.DataFrame()
+            
+            # Filtra per strategia
+            if strategia_filtro != "Tutte" and not df_stats_filtered.empty and 'Strategia' in df_stats_filtered.columns:
+                df_stats_filtered = df_stats_filtered[df_stats_filtered['Strategia'].apply(match_strategia)]
+                
+            # Filtra per data
             if not df_stats_filtered.empty and date_range:
                 df_stats_filtered['Data_Ora_parsed'] = pd.to_datetime(df_stats_filtered['Data_Ora'], errors='coerce')
                 df_stats_filtered = df_stats_filtered.dropna(subset=['Data_Ora_parsed'])
