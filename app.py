@@ -558,7 +558,7 @@ with tab3:
         except:
             return 0.0
 
-    # Carichiamo lo storico
+    # Carichiamo lo storico (posizioni chiuse)
     dati_stats = ws_storico.get_all_records(numericise_ignore=['all'])
     df_stats = pd.DataFrame(dati_stats) if dati_stats else pd.DataFrame()
     if not df_stats.empty:
@@ -574,31 +574,54 @@ with tab3:
     # Unione dei due dataframe
     df_combined = pd.concat([df_stats, df_aperte_stats], ignore_index=True)
     
-    if df_combined.empty:
-        st.info("Non ci sono operazioni (né attive né chiuse) per poter generare le statistiche.")
+    # Menu a tendina per filtrare le statistiche
+    tipo_operazioni = st.selectbox("📊 Seleziona le operazioni da analizzare:", 
+                                   ["Totale (Media)", "Posizioni Aperte", "Posizioni Chiuse"])
+                                   
+    # Filtriamo i dati in base alla selezione
+    if tipo_operazioni == "Posizioni Aperte":
+        df_filtered = df_aperte_stats
+    elif tipo_operazioni == "Posizioni Chiuse":
+        df_filtered = df_stats
+    else:
+        df_filtered = df_combined
+        
+    if df_filtered.empty:
+        st.info(f"Non ci sono operazioni per la selezione '{tipo_operazioni}' per poter generare le statistiche.")
     else:
         # Metriche in alto
-        totale = len(df_combined)
-        vincenti = len(df_combined[df_combined['P_L_Perc'] > 0])
+        totale = len(df_filtered)
+        vincenti = len(df_filtered[df_filtered['P_L_Perc'] > 0])
         win_rate = (vincenti / totale * 100) if totale > 0 else 0
-        profitto_medio = df_combined[df_combined['P_L_Perc'] > 0]['P_L_Perc'].mean()
-        perdita_media = df_combined[df_combined['P_L_Perc'] <= 0]['P_L_Perc'].mean()
+        profitto_medio = df_filtered[df_filtered['P_L_Perc'] > 0]['P_L_Perc'].mean()
+        perdita_media = df_filtered[df_filtered['P_L_Perc'] <= 0]['P_L_Perc'].mean()
         
         col_m1, col_m2, col_m3, col_m4 = st.columns(4)
-        col_m1.metric("Totale Operazioni (Aperte+Chiuse)", totale)
-        col_m2.metric("Win Rate Globale", f"{win_rate:.1f}%")
+        col_m1.metric(f"Operazioni ({tipo_operazioni})", totale)
+        col_m2.metric("Win Rate", f"{win_rate:.1f}%")
         col_m3.metric("Profitto Medio (Winner)", f"+{profitto_medio:.2f}%" if pd.notna(profitto_medio) else "0%")
         col_m4.metric("Perdita Media (Loser)", f"{perdita_media:.2f}%" if pd.notna(perdita_media) else "0%")
         
         st.divider()
-        st.subheader("Andamento Portafoglio nel Tempo (Incluso Open P&L)")
-        st.markdown("Tracciamento reale del controvalore P&L registrato ogni 10 minuti dal bot.")
+        st.subheader("Andamento Portafoglio nel Tempo")
+        
+        # Scegliamo la colonna e il titolo in base al filtro
+        colonna_y = 'P_L_Complessivo'
+        titolo_y = 'P&L Complessivo %'
+        if tipo_operazioni == 'Posizioni Aperte':
+            colonna_y = 'P_L_Aperto'
+            titolo_y = 'P&L Aperto %'
+        elif tipo_operazioni == 'Posizioni Chiuse':
+            colonna_y = 'P_L_Chiuso'
+            titolo_y = 'P&L Chiuso %'
+            
+        st.markdown(f"Tracciamento reale del controvalore **{titolo_y}** registrato ogni 10 minuti dal bot.")
         if ws_portafoglio:
             dati_portafoglio = ws_portafoglio.get_all_records(numericise_ignore=['all'])
             if dati_portafoglio:
                 df_portafoglio = pd.DataFrame(dati_portafoglio)
                 df_portafoglio['Data_Ora'] = pd.to_datetime(df_portafoglio['Data_Ora'])
-                df_portafoglio['P_L_Complessivo'] = df_portafoglio['P_L_Complessivo'].apply(to_float_safe)
+                df_portafoglio[colonna_y] = df_portafoglio[colonna_y].apply(to_float_safe)
                 
                 chart_portafoglio = alt.Chart(df_portafoglio).mark_area(
                     line={'color':'#2ecc71'},
@@ -610,31 +633,33 @@ with tab3:
                     )
                 ).encode(
                     x=alt.X('Data_Ora:T', title='Data e Ora'),
-                    y=alt.Y('P_L_Complessivo:Q', title='P&L Complessivo %', scale=alt.Scale(zero=False)),
+                    y=alt.Y(f'{colonna_y}:Q', title=titolo_y, scale=alt.Scale(zero=False)),
                     tooltip=['Data_Ora', 'P_L_Complessivo', 'P_L_Aperto', 'P_L_Chiuso']
                 ).properties(height=350)
                 st.altair_chart(chart_portafoglio, width="stretch")
             else:
                 st.info("Nessun dato registrato nello Storico Portafoglio. Il bot inizierà a popolarlo a breve.")
                 
-        st.divider()
-        st.subheader("P/L Cumulativo (Solo Operazioni Chiuse)")
-        
-        # Grafico andamento cumulativo
-        if 'Data_Ora_Uscita' in df_stats.columns:
-            df_sort = df_stats.sort_values(by='Data_Ora_Uscita').copy()
-            df_sort['Cumulativo'] = df_sort['P_L_Perc'].cumsum()
-            st.line_chart(df_sort.set_index('Data_Ora_Uscita')['Cumulativo'])
-        else:
-            st.warning("Data Uscita mancante nello storico.")
+        # Mostriamo il cumulativo solo se NON stiamo guardando solo le posizioni aperte
+        if tipo_operazioni != "Posizioni Aperte":
+            st.divider()
+            st.subheader("P/L Cumulativo (Solo Operazioni Chiuse)")
+            
+            # Grafico andamento cumulativo
+            if 'Data_Ora_Uscita' in df_stats.columns and not df_stats.empty:
+                df_sort = df_stats.sort_values(by='Data_Ora_Uscita').copy()
+                df_sort['Cumulativo'] = df_sort['P_L_Perc'].cumsum()
+                st.line_chart(df_sort.set_index('Data_Ora_Uscita')['Cumulativo'])
+            else:
+                st.warning("Data Uscita mancante nello storico o storico vuoto.")
             
         st.divider()
         
         col_g1, col_g2 = st.columns(2)
         with col_g1:
             st.subheader("Profitto Medio per Suggeritore")
-            if 'Suggeritore' in df_combined.columns:
-                df_sugg = df_combined[df_combined['Suggeritore'] != ''].groupby('Suggeritore')['P_L_Perc'].mean().reset_index()
+            if 'Suggeritore' in df_filtered.columns:
+                df_sugg = df_filtered[df_filtered['Suggeritore'] != ''].groupby('Suggeritore')['P_L_Perc'].mean().reset_index()
                 if not df_sugg.empty:
                     chart_sugg = alt.Chart(df_sugg).mark_bar().encode(
                         x=alt.X('Suggeritore', sort='-y', title='Chi ha dato il segnale?'),
@@ -647,8 +672,8 @@ with tab3:
         
         with col_g2:
             st.subheader("Performance per Modello")
-            if 'Modello' in df_combined.columns:
-                df_mod = df_combined[df_combined['Modello'] != ''].groupby('Modello')['P_L_Perc'].mean().reset_index()
+            if 'Modello' in df_filtered.columns:
+                df_mod = df_filtered[df_filtered['Modello'] != ''].groupby('Modello')['P_L_Perc'].mean().reset_index()
                 if not df_mod.empty:
                     chart_mod = alt.Chart(df_mod).mark_bar().encode(
                         x=alt.X('Modello', sort='-y', title='Strategia usata'),
