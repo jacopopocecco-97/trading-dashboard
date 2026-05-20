@@ -171,6 +171,7 @@ def run_bot():
             righe_prezzi_da_loggare = []
             tickers_loggati_questo_giro = set() # Per evitare duplicati se ci sono 2 posizioni uguali
             totale_open_pnl = 0.0
+            pnl_attive_per_strategia = []
             
             for index, row in df_attive.iterrows():
                 ticker = row.get("Ticker", "")
@@ -200,6 +201,7 @@ def run_bot():
                 if prezzo_ingresso > 0:
                     pnl = ((prezzo_corrente_convertito - prezzo_ingresso) / prezzo_ingresso) * 100
                 totale_open_pnl += pnl
+                pnl_attive_per_strategia.append({"Strategia": strategia, "P_L": pnl})
                 
                 # Check Stop Loss / Take Profit
                 if sl > 0 and prezzo_corrente_convertito <= sl:
@@ -235,17 +237,82 @@ def run_bot():
             # Ogni 10 minuti (600 secondi)
             if (now - last_portfolio_log_time).total_seconds() >= 600:
                 dati_storico = ws_storico.get_all_records(numericise_ignore=['all'])
-                totale_closed_pnl = 0.0
-                if dati_storico:
-                    df_storico = pd.DataFrame(dati_storico)
+                df_storico = pd.DataFrame(dati_storico) if dati_storico else pd.DataFrame()
+                if not df_storico.empty:
                     df_storico['P_L_Perc'] = df_storico.get('P_L_Perc', pd.Series([0]*len(df_storico))).apply(to_float_safe)
-                    totale_closed_pnl = df_storico['P_L_Perc'].sum()
                 
-                totale_complessivo = totale_open_pnl + totale_closed_pnl
+                # Aggiungiamo l'intestazione 'Strategia' in colonna E se non esiste ancora nel foglio
+                try:
+                    headers = ws_portafoglio.row_values(1)
+                    if len(headers) < 5 or headers[4] != 'Strategia':
+                        ws_portafoglio.update_cell(1, 5, 'Strategia')
+                        print("Aggiunta colonna 'Strategia' a Storico_Portafoglio")
+                except Exception as e_h:
+                    print(f"Errore nel verificare/aggiungere l'intestazione 'Strategia': {e_h}")
+
+                # Liste delle strategie da monitorare
+                strategie_possibili = ["Tutte", "Speculativo", "Breve termine", "Medio termine", "Lungo termine"]
                 
-                riga_portafoglio = [now.strftime("%Y-%m-%d %H:%M:%S"), round(totale_open_pnl, 2), round(totale_closed_pnl, 2), round(totale_complessivo, 2)]
-                ws_portafoglio.append_row(riga_portafoglio, value_input_option='USER_ENTERED')
-                print(f"Salvato storico portafoglio. Complessivo: {totale_complessivo:.2f}%")
+                # Funzione tollerante di matching della strategia
+                def match_strategia_local(val, target):
+                    if not isinstance(val, str):
+                        return False
+                    val_clean = val.strip().lower()
+                    target_clean = target.strip().lower()
+                    if val_clean == target_clean:
+                        return True
+                    if "breve" in target_clean and "breve" in val_clean:
+                        return True
+                    if "medio" in target_clean and "medio" in val_clean:
+                        return True
+                    if "lungo" in target_clean and "lungo" in val_clean:
+                        return True
+                    if "speculativo" in target_clean and "speculativo" in val_clean:
+                        return True
+                    return False
+
+                righe_da_appendere = []
+                for strat in strategie_possibili:
+                    # Calcola closed PNL
+                    if strat == "Tutte":
+                        closed_pnl_strat = df_storico['P_L_Perc'].sum() if not df_storico.empty else 0.0
+                    else:
+                        if not df_storico.empty and 'Strategia' in df_storico.columns:
+                            df_st_strat = df_storico[df_storico['Strategia'].apply(lambda x: match_strategia_local(x, strat))]
+                            closed_pnl_strat = df_st_strat['P_L_Perc'].sum()
+                        else:
+                            closed_pnl_strat = 0.0
+                    
+                    # Calcola open PNL
+                    if strat == "Tutte":
+                        open_pnl_strat = totale_open_pnl
+                    else:
+                        open_pnl_strat = sum(item["P_L"] for item in pnl_attive_per_strategia if match_strategia_local(item["Strategia"], strat))
+                    
+                    comp_pnl_strat = open_pnl_strat + closed_pnl_strat
+                    
+                    riga_portafoglio = [
+                        now.strftime("%Y-%m-%d %H:%M:%S"), 
+                        round(open_pnl_strat, 2), 
+                        round(closed_pnl_strat, 2), 
+                        round(comp_pnl_strat, 2), 
+                        strat
+                    ]
+                    righe_da_appendere.append(riga_portafoglio)
+                
+                try:
+                    ws_portafoglio.append_rows(righe_da_appendere, value_input_option='USER_ENTERED')
+                    print(f"Salvato storico portafoglio per {len(righe_da_appendere)} strategie.")
+                except Exception as e_append:
+                    print(f"Errore nel salvare lo storico portafoglio: {e_append}")
+                    # Fallback riga singola senza strategia per non bloccare
+                    try:
+                        riga_portafoglio_fb = [now.strftime("%Y-%m-%d %H:%M:%S"), round(totale_open_pnl, 2), round(totale_closed_pnl, 2), round(totale_open_pnl + totale_closed_pnl, 2)]
+                        ws_portafoglio.append_row(riga_portafoglio_fb, value_input_option='USER_ENTERED')
+                        print("Salvata riga singola di fallback in Storico_Portafoglio")
+                    except Exception as e_fb:
+                        print(f"Errore gravissimo nel fallback Storico_Portafoglio: {e_fb}")
+                        
                 last_portfolio_log_time = now
             
         except Exception as e:

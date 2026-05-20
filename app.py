@@ -700,20 +700,47 @@ with tab3:
                 df_portafoglio['Data_Ora'] = pd.to_datetime(df_portafoglio['Data_Ora'])
                 df_portafoglio[colonna_y] = df_portafoglio[colonna_y].apply(to_float_safe)
                 
-                chart_portafoglio = alt.Chart(df_portafoglio).mark_area(
-                    line={'color':'#2ecc71'},
-                    color=alt.Gradient(
-                        gradient='linear',
-                        stops=[alt.GradientStop(color='#2ecc71', offset=0),
-                               alt.GradientStop(color='rgba(46, 204, 113, 0.1)', offset=1)],
-                        x1=1, x2=1, y1=1, y2=0
-                    )
-                ).encode(
-                    x=alt.X('Data_Ora:T', title='Data e Ora'),
-                    y=alt.Y(f'{colonna_y}:Q', title=titolo_y, scale=alt.Scale(zero=False)),
-                    tooltip=['Data_Ora', 'P_L_Complessivo', 'P_L_Aperto', 'P_L_Chiuso']
-                ).properties(height=350)
-                st.altair_chart(chart_portafoglio, width="stretch")
+                # Filtro per strategia
+                if 'Strategia' in df_portafoglio.columns:
+                    if strategia_filtro == "Tutte":
+                        df_portafoglio = df_portafoglio[(df_portafoglio['Strategia'] == 'Tutte') | (df_portafoglio['Strategia'] == '') | (df_portafoglio['Strategia'].isna())]
+                    else:
+                        df_portafoglio = df_portafoglio[df_portafoglio['Strategia'].apply(match_strategia)]
+                else:
+                    if strategia_filtro != "Tutte":
+                        st.info("Nota: I dati storici temporali per singole strategie saranno registrati a partire dalle prossime esecuzioni del bot.")
+                
+                # Filtro per data
+                if date_range and not df_portafoglio.empty:
+                    if isinstance(date_range, (tuple, list)) and len(date_range) == 2:
+                        start_date, end_date = date_range
+                        start_ts = pd.Timestamp(start_date)
+                        end_ts = pd.Timestamp(end_date) + pd.Timedelta(days=1) - pd.Timedelta(seconds=1)
+                        df_portafoglio = df_portafoglio[
+                            (df_portafoglio['Data_Ora'] >= start_ts) & 
+                            (df_portafoglio['Data_Ora'] <= end_ts)
+                        ]
+                    elif isinstance(date_range, (tuple, list)) and len(date_range) == 1:
+                        start_ts = pd.Timestamp(date_range[0])
+                        df_portafoglio = df_portafoglio[df_portafoglio['Data_Ora'] >= start_ts]
+                
+                if not df_portafoglio.empty:
+                    chart_portafoglio = alt.Chart(df_portafoglio).mark_area(
+                        line={'color':'#2ecc71'},
+                        color=alt.Gradient(
+                            gradient='linear',
+                            stops=[alt.GradientStop(color='#2ecc71', offset=0),
+                                   alt.GradientStop(color='rgba(46, 204, 113, 0.1)', offset=1)],
+                            x1=1, x2=1, y1=1, y2=0
+                        )
+                    ).encode(
+                        x=alt.X('Data_Ora:T', title='Data e Ora'),
+                        y=alt.Y(f'{colonna_y}:Q', title=titolo_y, scale=alt.Scale(zero=False)),
+                        tooltip=['Data_Ora', 'P_L_Complessivo', 'P_L_Aperto', 'P_L_Chiuso']
+                    ).properties(height=350)
+                    st.altair_chart(chart_portafoglio, width="stretch")
+                else:
+                    st.info("Nessun dato registrato nell'intervallo temporale o per la strategia selezionata.")
             else:
                 st.info("Nessun dato registrato nello Storico Portafoglio. Il bot inizierà a popolarlo a breve.")
                 
