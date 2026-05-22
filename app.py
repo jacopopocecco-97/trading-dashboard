@@ -334,12 +334,85 @@ with tab1:
                         df_prezzi_ticker['Prezzo'] = df_prezzi_ticker['Prezzo'].apply(to_float_safe)
                         df_prezzi_ticker['Data_Ora'] = pd.to_datetime(df_prezzi_ticker['Data_Ora'])
                         
-                        chart_prezzi = alt.Chart(df_prezzi_ticker).mark_line(point=True, color='#3498db').encode(
+                        # Cerca il prezzo di acquisto (Prezzo_Entrata) per il ticker selezionato
+                        prezzo_acquisto = None
+                        if not df_attive.empty:
+                            df_target = df_attive[df_attive['Ticker'] == ticker_selezionato]
+                            if not df_target.empty:
+                                prezzo_acquisto = to_float_safe(df_target.iloc[-1].get('Prezzo_Entrata', 0))
+                        
+                        if prezzo_acquisto is None and dati_storico:
+                            df_stor_temp = pd.DataFrame(dati_storico)
+                            if not df_stor_temp.empty and 'Ticker' in df_stor_temp.columns:
+                                df_target = df_stor_temp[df_stor_temp['Ticker'] == ticker_selezionato]
+                                if not df_target.empty:
+                                    prezzo_acquisto = to_float_safe(df_target.iloc[-1].get('Prezzo_Entrata', 0))
+                        
+                        ultimo_prezzo = df_prezzi_ticker['Prezzo'].iloc[-1]
+                        
+                        # Determina colore e visualizza banner informativo
+                        if prezzo_acquisto is not None and prezzo_acquisto > 0:
+                            guadagno = ultimo_prezzo >= prezzo_acquisto
+                            chart_color = '#2ecc71' if guadagno else '#e74c3c'
+                            pnl_val = ((ultimo_prezzo - prezzo_acquisto) / prezzo_acquisto) * 100
+                            
+                            # Mostra un messaggio di stato colorato
+                            if guadagno:
+                                st.success(f"📈 **Azione in Guadagno!** | Prezzo Acquisto: **{prezzo_acquisto:.2f}** | Ultimo Rilevato: **{ultimo_prezzo:.2f}** (**{pnl_val:+.2f}%**)")
+                            else:
+                                st.error(f"📉 **Azione in Perdita!** | Prezzo Acquisto: **{prezzo_acquisto:.2f}** | Ultimo Rilevato: **{ultimo_prezzo:.2f}** (**{pnl_val:+.2f}%**)")
+                        else:
+                            chart_color = '#3498db'
+                            st.info(f"ℹ️ Prezzo di acquisto non trovato per questo ticker nelle posizioni attive o storiche. | Ultimo Prezzo: **{ultimo_prezzo:.2f}**")
+                        
+                        # Creazione grafico base della linea dei prezzi
+                        base_chart = alt.Chart(df_prezzi_ticker).mark_line(
+                            point=True,
+                            color=chart_color,
+                            strokeWidth=3
+                        ).encode(
                             x=alt.X('Data_Ora:T', title='Data e Ora'),
                             y=alt.Y('Prezzo:Q', title='Prezzo Registrato', scale=alt.Scale(zero=False)),
                             tooltip=['Data_Ora', 'Prezzo']
                         ).properties(height=350)
-                        st.altair_chart(chart_prezzi, width="stretch")
+                        
+                        final_chart = base_chart
+                        
+                        # Aggiunge la linea del prezzo di acquisto (se disponibile)
+                        if prezzo_acquisto is not None and prezzo_acquisto > 0:
+                            # Linea orizzontale
+                            rule_df = pd.DataFrame({'Prezzo_Acquisto': [prezzo_acquisto]})
+                            rule_chart = alt.Chart(rule_df).mark_rule(
+                                color='#f39c12',
+                                strokeDash=[6, 4],
+                                strokeWidth=2
+                            ).encode(
+                                y='Prezzo_Acquisto:Q'
+                            )
+                            
+                            # Label per la linea posizionata alla fine del grafico (data più recente)
+                            max_date = df_prezzi_ticker['Data_Ora'].max()
+                            text_df = pd.DataFrame({
+                                'Data_Ora': [max_date],
+                                'Prezzo_Acquisto': [prezzo_acquisto],
+                                'Label': [f"Acquisto: {prezzo_acquisto:.2f}"]
+                            })
+                            text_chart = alt.Chart(text_df).mark_text(
+                                align='right',
+                                dx=-10,
+                                dy=-15,
+                                color='#f39c12',
+                                fontSize=11,
+                                fontWeight='bold'
+                            ).encode(
+                                x='Data_Ora:T',
+                                y='Prezzo_Acquisto:Q',
+                                text='Label:N'
+                            )
+                            
+                            final_chart = alt.layer(base_chart, rule_chart, text_chart)
+                        
+                        st.altair_chart(final_chart, use_container_width=True)
                     else:
                         st.info(f"Nessun prezzo registrato ancora per {ticker_selezionato}. Verrà registrato al prossimo aggiornamento (se l'azione è attiva).")
             else:
