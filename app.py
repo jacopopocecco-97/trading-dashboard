@@ -165,6 +165,10 @@ if 'form_strategia' not in st.session_state:
     st.session_state.form_strategia = "Speculativo"
 if 'form_orizzonte' not in st.session_state:
     st.session_state.form_orizzonte = 0
+if 'form_tp2' not in st.session_state:
+    st.session_state.form_tp2 = 0.0
+if 'form_perc_tp1' not in st.session_state:
+    st.session_state.form_perc_tp1 = 50
 
 # --- TAB 1: DASHBOARD ---
 with tab1:
@@ -515,11 +519,15 @@ IMPORTANTE: Alla fine della tua analisi, DEVI fornire i dati delle azioni che ha
     ticker_input = st.text_input("Ticker Azione (es. TSLA, AAPL, UCG.MI)", key="form_ticker").upper()
     valuta_input = st.selectbox("Valuta di riferimento per i prezzi", ["USD", "EUR"])
     
-    col1, col2 = st.columns(2)
+    col1, col2, col_tp2, col_perc = st.columns(4)
     with col1:
-        sl_input = st.number_input("Stop Loss (Prezzo)", min_value=0.0, format="%.2f", step=0.5, key="form_sl")
+        sl_input = st.number_input("Stop Loss", min_value=0.0, format="%.2f", step=0.5, key="form_sl")
     with col2:
-        tp_input = st.number_input("Take Profit (Prezzo)", min_value=0.0, format="%.2f", step=0.5, key="form_tp")
+        tp_input = st.number_input("TP 1", min_value=0.0, format="%.2f", step=0.5, key="form_tp")
+    with col_tp2:
+        tp2_input = st.number_input("TP 2", min_value=0.0, format="%.2f", step=0.5, key="form_tp2")
+    with col_perc:
+        perc_tp1_input = st.number_input("% Vendi TP1", min_value=0, max_value=100, step=10, key="form_perc_tp1")
         
     col3, col4 = st.columns(2)
     with col3:
@@ -605,9 +613,9 @@ IMPORTANTE: Alla fine della tua analisi, DEVI fornire i dati delle azioni che ha
                         is_pending = True
                         
                     if is_pending:
-                        st.write(f"Vuoi inviare l'ordine ai **PENDING** con range di ingresso [{p_min} - {p_max}], SL a {sl_input} e TP a {tp_input}?")
+                        st.write(f"Vuoi inviare l'ordine ai **PENDING** con range di ingresso [{p_min} - {p_max}], SL a {sl_input}, TP1 a {tp_input}, TP2 a {tp2_input}?")
                         if st.button("⏳ Salva come Ordine Pending"):
-                            nuova_riga = [p['ticker'], p_min, p_max, p['valuta'], sl_input, tp_input, data_ora_str, suggeritore_input, modello_input, strategia_input, orizzonte_input]
+                            nuova_riga = [p['ticker'], p_min, p_max, p['valuta'], sl_input, tp_input, tp2_input, perc_tp1_input, data_ora_str, suggeritore_input, modello_input, strategia_input, orizzonte_input]
                             try:
                                 ws_pending.append_row(nuova_riga, value_input_option='USER_ENTERED')
                                 st.success(f"Ordine pending su {p['ticker']} aggiunto con successo!")
@@ -617,9 +625,10 @@ IMPORTANTE: Alla fine della tua analisi, DEVI fornire i dati delle azioni che ha
                             except Exception as e:
                                 st.error(f"Errore durante il salvataggio su Google Sheets: {e}")
                     else:
-                        st.write(f"Vuoi confermare l'apertura **IMMEDIATA** a questo prezzo con SL a {sl_input} e TP a {tp_input}?")
+                        st.write(f"Vuoi confermare l'apertura **IMMEDIATA** a questo prezzo con SL a {sl_input}, TP1 a {tp_input}, TP2 a {tp2_input}?")
                         if st.button("✅ Conferma e Apri Posizione"):
-                            nuova_riga = [p['ticker'], p['prezzo'], p['valuta'], sl_input, tp_input, data_ora_str, suggeritore_input, modello_input, strategia_input, orizzonte_input]
+                            # Aggiungiamo anche il flag TP1_Raggiunto = "FALSE"
+                            nuova_riga = [p['ticker'], p['prezzo'], p['valuta'], sl_input, tp_input, tp2_input, perc_tp1_input, "FALSE", data_ora_str, suggeritore_input, modello_input, strategia_input, orizzonte_input]
                             try:
                                 ws_attive.append_row(nuova_riga, value_input_option='USER_ENTERED')
                                 st.success(f"Posizione su {p['ticker']} aggiunta con successo! Aggiornamento dashboard...")
@@ -649,7 +658,7 @@ IMPORTANTE: Alla fine della tua analisi, DEVI fornire i dati delle azioni che ha
                         p_min = round(prezzo_input * 0.99, 2)
                         p_max = round(prezzo_input * 1.01, 2)
                         
-                    nuova_riga = [ticker_input, p_min, p_max, valuta_input, sl_input, tp_input, data_ora_str, suggeritore_input, modello_input, strategia_input, orizzonte_input]
+                    nuova_riga = [ticker_input, p_min, p_max, valuta_input, sl_input, tp_input, tp2_input, perc_tp1_input, data_ora_str, suggeritore_input, modello_input, strategia_input, orizzonte_input]
                     try:
                         ws_pending.append_row(nuova_riga, value_input_option='USER_ENTERED')
                         st.success(f"Ordine pending su {ticker_input} aggiunto con successo!")
@@ -658,7 +667,8 @@ IMPORTANTE: Alla fine della tua analisi, DEVI fornire i dati delle azioni che ha
                     except Exception as e:
                         st.error(f"Errore durante il salvataggio: {e}")
                 else:
-                    nuova_riga = [ticker_input, prezzo_input, valuta_input, sl_input, tp_input, data_ora_str, suggeritore_input, modello_input, strategia_input, orizzonte_input]
+                    # Aggiungiamo anche il flag TP1_Raggiunto = "FALSE"
+                    nuova_riga = [ticker_input, prezzo_input, valuta_input, sl_input, tp_input, tp2_input, perc_tp1_input, "FALSE", data_ora_str, suggeritore_input, modello_input, strategia_input, orizzonte_input]
                     try:
                         ws_attive.append_row(nuova_riga, value_input_option='USER_ENTERED')
                         st.success(f"Posizione manuale su {ticker_input} aggiunta con successo! Aggiornamento dashboard...")
