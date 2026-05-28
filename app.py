@@ -699,6 +699,9 @@ with tab3:
             df_stats.rename(columns={'Data_Ora_Entrata': 'Data_Ora'}, inplace=True)
         if 'Strategia' not in df_stats.columns:
             df_stats['Strategia'] = ''
+        df_stats['Stato'] = 'Chiusa'
+    else:
+        df_stats = pd.DataFrame(columns=['Ticker', 'P_L_Perc', 'Suggeritore', 'Modello', 'Data_Ora', 'Strategia', 'Stato'])
         
     # Carichiamo le posizioni aperte dalla dashboard (se esistono)
     df_aperte_stats = pd.DataFrame()
@@ -711,6 +714,9 @@ with tab3:
             df_aperte_stats['Strategia'] = ''
         df_aperte_stats.rename(columns={'P/L %': 'P_L_Perc'}, inplace=True)
         df_aperte_stats = df_aperte_stats.dropna(subset=['P_L_Perc'])
+        df_aperte_stats['Stato'] = 'Aperta'
+    else:
+        df_aperte_stats = pd.DataFrame(columns=['Ticker', 'P_L_Perc', 'Suggeritore', 'Modello', 'Data_Ora', 'Strategia', 'Stato'])
         
     # Unione dei due dataframe
     df_combined = pd.concat([df_stats, df_aperte_stats], ignore_index=True)
@@ -911,47 +917,97 @@ with tab3:
             else:
                 st.info("Nessun dato registrato nello Storico Portafoglio. Il bot inizierà a popolarlo a breve.")
                 
-        # Mostriamo il cumulativo solo se NON stiamo guardando solo le posizioni aperte
-        if tipo_operazioni != "Posizioni Aperte":
-            st.divider()
-            st.subheader("P/L Cumulativo (Solo Operazioni Chiuse)")
+        # Media del profit and loss totale (aperte + chiuse, sia in positivo che in negativo)
+        st.divider()
+        st.subheader("Performance Medie e Distribuzione P&L Totale")
+        
+        # Filtra il dataset combinato (aperte + chiuse) in base alla strategia e date
+        df_comb_filtered = df_combined.copy() if not df_combined.empty else pd.DataFrame()
+        
+        # Filtra per strategia
+        if strategia_filtro != "Tutte" and not df_comb_filtered.empty and 'Strategia' in df_comb_filtered.columns:
+            df_comb_filtered = df_comb_filtered[df_comb_filtered['Strategia'].apply(match_strategia)]
             
-            # Filtra lo storico in base a strategia e data di acquisto selezionate
-            df_stats_filtered = df_stats.copy() if not df_stats.empty else pd.DataFrame()
-            
-            # Filtra per strategia
-            if strategia_filtro != "Tutte" and not df_stats_filtered.empty and 'Strategia' in df_stats_filtered.columns:
-                df_stats_filtered = df_stats_filtered[df_stats_filtered['Strategia'].apply(match_strategia)]
-                
-            # Filtra per data
-            if not df_stats_filtered.empty and date_range:
-                df_stats_filtered['Data_Ora_parsed'] = pd.to_datetime(df_stats_filtered['Data_Ora'], errors='coerce')
-                df_stats_filtered = df_stats_filtered.dropna(subset=['Data_Ora_parsed'])
-                if isinstance(date_range, (tuple, list)) and len(date_range) == 2:
-                    start_date, end_date = date_range
-                    start_ts = pd.Timestamp(start_date)
-                    end_ts = pd.Timestamp(end_date) + pd.Timedelta(days=1) - pd.Timedelta(seconds=1)
-                    df_stats_filtered = df_stats_filtered[
-                        (df_stats_filtered['Data_Ora_parsed'] >= start_ts) & 
-                        (df_stats_filtered['Data_Ora_parsed'] <= end_ts)
-                    ]
-                elif isinstance(date_range, (tuple, list)) and len(date_range) == 1:
-                    start_ts = pd.Timestamp(date_range[0])
-                    df_stats_filtered = df_stats_filtered[df_stats_filtered['Data_Ora_parsed'] >= start_ts]
+        # Filtra per data
+        if not df_comb_filtered.empty and date_range:
+            df_comb_filtered['Data_Ora_parsed'] = pd.to_datetime(df_comb_filtered['Data_Ora'], errors='coerce')
+            df_comb_filtered = df_comb_filtered.dropna(subset=['Data_Ora_parsed'])
+            if isinstance(date_range, (tuple, list)) and len(date_range) == 2:
+                start_date, end_date = date_range
+                start_ts = pd.Timestamp(start_date)
+                end_ts = pd.Timestamp(end_date) + pd.Timedelta(days=1) - pd.Timedelta(seconds=1)
+                df_comb_filtered = df_comb_filtered[
+                    (df_comb_filtered['Data_Ora_parsed'] >= start_ts) & 
+                    (df_comb_filtered['Data_Ora_parsed'] <= end_ts)
+                ]
+            elif isinstance(date_range, (tuple, list)) and len(date_range) == 1:
+                start_ts = pd.Timestamp(date_range[0])
+                df_comb_filtered = df_comb_filtered[df_comb_filtered['Data_Ora_parsed'] >= start_ts]
 
-            # Grafico andamento cumulativo con Altair Premium
-            if not df_stats_filtered.empty and 'Data_Ora_Uscita' in df_stats_filtered.columns:
-                df_sort = df_stats_filtered.sort_values(by='Data_Ora_Uscita').copy()
-                df_sort['Cumulativo'] = df_sort['P_L_Perc'].cumsum()
+        if not df_comb_filtered.empty:
+            avg_pl = df_comb_filtered['P_L_Perc'].mean()
+            tot_posizioni = len(df_comb_filtered)
+            pos_profit = len(df_comb_filtered[df_comb_filtered['P_L_Perc'] > 0])
+            pos_loss = len(df_comb_filtered[df_comb_filtered['P_L_Perc'] <= 0])
+            win_rate = (pos_profit / tot_posizioni * 100) if tot_posizioni > 0 else 0.0
+            
+            col_m1, col_m2, col_m3, col_m4 = st.columns(4)
+            with col_m1:
+                st.metric("📊 P&L Medio Totale", f"{avg_pl:+.2f}%")
+            with col_m2:
+                st.metric("🎯 Win Rate Complessivo", f"{win_rate:.1f}%")
+            with col_m3:
+                st.metric("🟢 Posizioni in Profitto", f"{pos_profit}")
+            with col_m4:
+                st.metric("🔴 Posizioni in Perdita", f"{pos_loss}")
                 
-                chart_cum = alt.Chart(df_sort).mark_line(point=True, color='#2ecc71').encode(
-                    x=alt.X('Data_Ora_Uscita:T', title='Data di Chiusura'),
-                    y=alt.Y('Cumulativo:Q', title='P&L Cumulativo %'),
-                    tooltip=['Data_Ora_Uscita', 'Ticker', 'P_L_Perc', 'Cumulativo']
-                ).properties(height=350)
-                st.altair_chart(chart_cum, width="stretch")
-            else:
-                st.warning("Nessuna operazione chiusa trovata in questo intervallo di date o storico vuoto.")
+            # Costruiamo il grafico a barre del P&L di ogni singola posizione
+            df_chart = df_comb_filtered.copy()
+            df_chart['Data_Ora_str'] = pd.to_datetime(df_chart['Data_Ora']).dt.strftime('%d/%m/%Y %H:%M')
+            df_chart['Posizione'] = df_chart['Ticker'] + " (" + df_chart['Data_Ora_str'] + ")"
+            df_chart = df_chart.sort_values(by='Data_Ora')
+            
+            # Grafico a barre
+            bars = alt.Chart(df_chart).mark_bar(cornerRadiusTopLeft=4, cornerRadiusTopRight=4).encode(
+                x=alt.X('Posizione:N', sort=None, title='Posizione (Ticker e Data)'),
+                y=alt.Y('P_L_Perc:Q', title='Profit & Loss %'),
+                color=alt.condition(
+                    alt.datum.P_L_Perc > 0,
+                    alt.value('#2ecc71'), # Verde per profitti
+                    alt.value('#e74c3c')  # Rosso per perdite
+                ),
+                tooltip=['Ticker', 'Stato', 'P_L_Perc', 'Data_Ora_str', 'Suggeritore', 'Modello', 'Strategia']
+            )
+            
+            # Linea orizzontale per la media complessiva
+            line_avg = alt.Chart(pd.DataFrame({'avg_val': [avg_pl]})).mark_rule(
+                color='#3498db',
+                strokeWidth=2,
+                strokeDash=[5, 5]
+            ).encode(
+                y='avg_val:Q'
+            )
+            
+            # Etichetta di testo per la media
+            text_avg = alt.Chart(pd.DataFrame({'avg_val': [avg_pl], 'text': [f"Media: {avg_pl:+.2f}%"]})).mark_text(
+                align='left',
+                baseline='bottom',
+                dx=10,
+                color='#3498db',
+                fontSize=12,
+                fontWeight='bold'
+            ).encode(
+                y='avg_val:Q',
+                text='text:N'
+            )
+            
+            chart_tot = (bars + line_avg + text_avg).properties(
+                height=350,
+                title='Profit & Loss di Ogni Posizione (Tratteggio = Media Totale)'
+            )
+            st.altair_chart(chart_tot, width="stretch")
+        else:
+            st.warning("Nessuna operazione (aperta o chiusa) trovata in questo intervallo di date o storico vuoto.")
             
         st.divider()
         
