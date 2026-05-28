@@ -697,6 +697,8 @@ with tab3:
         df_stats['P_L_Perc'] = df_stats.get('P_L_Perc', pd.Series([0]*len(df_stats))).apply(to_float_safe)
         if 'Data_Ora_Entrata' in df_stats.columns:
             df_stats.rename(columns={'Data_Ora_Entrata': 'Data_Ora'}, inplace=True)
+        if 'Strategia' not in df_stats.columns:
+            df_stats['Strategia'] = ''
         
     # Carichiamo le posizioni aperte dalla dashboard (se esistono)
     df_aperte_stats = pd.DataFrame()
@@ -740,8 +742,41 @@ with tab3:
                                        ["Totale (Media)", "Posizioni Aperte", "Posizioni Chiuse"])
                                        
     with col_f2:
-        strategia_filtro = st.selectbox("🎯 Filtra per strategia:", 
-                                       ["Tutte", "Speculativo", "Breve termine", "Medio termine", "Lungo termine"])
+        # Raccogliamo in modo sicuro TUTTE le strategie esistenti in TUTTI i fogli Google Sheet
+        strategie_presenti = ["Tutte"]
+        all_strategies = set()
+        
+        # Carica i dati dai vari fogli usando le variabili locali o interrogando i fogli direttamente
+        d_att = dati_attive if 'dati_attive' in locals() else (ws_attive.get_all_records(numericise_ignore=['all']) if ws_attive else [])
+        d_st = dati_stats if 'dati_stats' in locals() else (ws_storico.get_all_records(numericise_ignore=['all']) if ws_storico else [])
+        d_pend = dati_pending if 'dati_pending' in locals() else (ws_pending.get_all_records(numericise_ignore=['all']) if ws_pending else [])
+        
+        for dataset in [d_att, d_st, d_pend]:
+            if dataset:
+                for row in dataset:
+                    strat = row.get('Strategia') or row.get('strategia')
+                    if strat:
+                        all_strategies.add(str(strat).strip())
+                        
+        # Aggiungiamo anche le strategie predefinite per garantire che non manchino mai
+        strategie_predefinite = ["Speculativo", "Breve termine", "Medio termine", "Lungo termine"]
+        for s in strategie_predefinite:
+            all_strategies.add(s)
+            
+        # Pulisce, deduplica e ordina
+        unique_strats = sorted(list(set(
+            s for s in all_strategies if s and s.strip() != ""
+        )))
+        seen_lower = set()
+        deduped_strats = []
+        for s in unique_strats:
+            if s.lower() not in seen_lower:
+                seen_lower.add(s.lower())
+                deduped_strats.append(s)
+        deduped_strats.sort(key=str.lower)
+        strategie_presenti.extend(deduped_strats)
+        
+        strategia_filtro = st.selectbox("🎯 Filtra per strategia:", strategie_presenti)
                                        
     # Filtriamo provvisoriamente i dati in base alla tipologia selezionata
     if tipo_operazioni == "Posizioni Aperte":
