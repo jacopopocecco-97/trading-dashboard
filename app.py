@@ -7,6 +7,7 @@ from datetime import datetime
 from streamlit_autorefresh import st_autorefresh
 import time
 import altair as alt
+import plotly.graph_objects as go
 
 # --- CONFIGURAZIONE PAGINA ---
 st.set_page_config(page_title="Trading Dashboard", page_icon="📈", layout="wide")
@@ -15,7 +16,6 @@ st.set_page_config(page_title="Trading Dashboard", page_icon="📈", layout="wid
 SHEET_NAME = " TradingDashboard"
 WORKSHEET_ATTIVE = "Posizioni_Attive"
 WORKSHEET_STORICO = "Storico"
-WORKSHEET_PREZZI = "Storico_Prezzi"
 WORKSHEET_PENDING = "Ordini_Pending"
 WORKSHEET_PORTAFOGLIO = "Storico_Portafoglio"
 
@@ -136,7 +136,6 @@ if not client:
 
 ws_attive = get_worksheet(client, WORKSHEET_ATTIVE)
 ws_storico = get_worksheet(client, WORKSHEET_STORICO)
-ws_prezzi = get_worksheet(client, WORKSHEET_PREZZI)
 ws_pending = get_worksheet(client, WORKSHEET_PENDING)
 ws_portafoglio = get_worksheet(client, WORKSHEET_PORTAFOGLIO)
 
@@ -308,7 +307,7 @@ with tab1:
         st.info("Lo storico è vuoto.")
 
     st.divider()
-    st.header("📈 Trend Prezzi (Storico Salvato)")
+    st.header("📈 Trend Prezzi (Candele Giornaliere)")
     
     tickers_attivi = set(df_attive['Ticker'].tolist()) if not df_attive.empty else set()
     tickers_storico = set(pd.DataFrame(dati_storico)['Ticker'].tolist()) if dati_storico else set()
@@ -317,110 +316,74 @@ with tab1:
     opzioni_tickers = [f"🟢 {t} (Attiva)" if t in tickers_attivi else f"🔴 {t} (Chiusa)" for t in tutti_tickers]
     
     if opzioni_tickers:
-        ticker_selezionato_label = st.selectbox("Seleziona un'azione per vedere l'andamento del suo prezzo registrato:", opzioni_tickers)
+        ticker_selezionato_label = st.selectbox("Seleziona un'azione per vedere il suo andamento a candele giornaliere:", opzioni_tickers)
         ticker_selezionato = ticker_selezionato_label.split(" ")[1] # Estrae il ticker puro, es. "TSLA"
         
-        if ws_prezzi:
-            dati_prezzi = ws_prezzi.get_all_records(numericise_ignore=['all'])
-            if dati_prezzi:
-                df_prezzi = pd.DataFrame(dati_prezzi)
-                if 'Ticker' in df_prezzi.columns:
-                    df_prezzi_ticker = df_prezzi[df_prezzi['Ticker'] == ticker_selezionato].copy()
+        with st.spinner("Scaricando dati giornalieri storici..."):
+            try:
+                # Recupero candele giornaliere degli ultimi 6 mesi
+                stock = yf.Ticker(ticker_selezionato)
+                df_hist = stock.history(period="6mo")
+                
+                if not df_hist.empty:
+                    # Cerca il prezzo di acquisto (Prezzo_Entrata) per il ticker selezionato
+                    prezzo_acquisto = None
                     
-                    if not df_prezzi_ticker.empty:
-                        def to_float_safe(val):
-                            if isinstance(val, str):
-                                val = val.replace(',', '.')
-                            try:
-                                return float(val)
-                            except:
-                                return 0.0
-                        df_prezzi_ticker['Prezzo'] = df_prezzi_ticker['Prezzo'].apply(to_float_safe)
-                        df_prezzi_ticker['Data_Ora'] = pd.to_datetime(df_prezzi_ticker['Data_Ora'])
-                        
-                        # Cerca il prezzo di acquisto (Prezzo_Entrata) per il ticker selezionato
-                        prezzo_acquisto = None
-                        if not df_attive.empty:
-                            df_target = df_attive[df_attive['Ticker'] == ticker_selezionato]
+                    def to_float_safe(val):
+                        if isinstance(val, str):
+                            val = val.replace(',', '.')
+                        try:
+                            return float(val)
+                        except:
+                            return 0.0
+                            
+                    if not df_attive.empty:
+                        df_target = df_attive[df_attive['Ticker'] == ticker_selezionato]
+                        if not df_target.empty:
+                            prezzo_acquisto = to_float_safe(df_target.iloc[-1].get('Prezzo_Entrata', 0))
+                    
+                    if prezzo_acquisto is None and dati_storico:
+                        df_stor_temp = pd.DataFrame(dati_storico)
+                        if not df_stor_temp.empty and 'Ticker' in df_stor_temp.columns:
+                            df_target = df_stor_temp[df_stor_temp['Ticker'] == ticker_selezionato]
                             if not df_target.empty:
                                 prezzo_acquisto = to_float_safe(df_target.iloc[-1].get('Prezzo_Entrata', 0))
+                    
+                    # Grafico a Candele con Plotly
+                    fig = go.Figure(data=[go.Candlestick(x=df_hist.index,
+                                    open=df_hist['Open'],
+                                    high=df_hist['High'],
+                                    low=df_hist['Low'],
+                                    close=df_hist['Close'],
+                                    name='Candele Giornaliere')])
+
+                    # Aggiunta linea del prezzo di acquisto e messaggi info
+                    if prezzo_acquisto is not None and prezzo_acquisto > 0:
+                        fig.add_hline(y=prezzo_acquisto, line_dash="dash", line_color="orange",
+                                      annotation_text=f"Prezzo Acquisto ({prezzo_acquisto:.2f})", 
+                                      annotation_position="bottom right")
                         
-                        if prezzo_acquisto is None and dati_storico:
-                            df_stor_temp = pd.DataFrame(dati_storico)
-                            if not df_stor_temp.empty and 'Ticker' in df_stor_temp.columns:
-                                df_target = df_stor_temp[df_stor_temp['Ticker'] == ticker_selezionato]
-                                if not df_target.empty:
-                                    prezzo_acquisto = to_float_safe(df_target.iloc[-1].get('Prezzo_Entrata', 0))
-                        
-                        ultimo_prezzo = df_prezzi_ticker['Prezzo'].iloc[-1]
-                        
-                        # Determina colore e visualizza banner informativo
-                        if prezzo_acquisto is not None and prezzo_acquisto > 0:
-                            guadagno = ultimo_prezzo >= prezzo_acquisto
-                            chart_color = '#2ecc71' if guadagno else '#e74c3c'
-                            pnl_val = ((ultimo_prezzo - prezzo_acquisto) / prezzo_acquisto) * 100
-                            
-                            # Mostra un messaggio di stato colorato
-                            if guadagno:
-                                st.success(f"📈 **Azione in Guadagno!** | Prezzo Acquisto: **{prezzo_acquisto:.2f}** | Ultimo Rilevato: **{ultimo_prezzo:.2f}** (**{pnl_val:+.2f}%**)")
-                            else:
-                                st.error(f"📉 **Azione in Perdita!** | Prezzo Acquisto: **{prezzo_acquisto:.2f}** | Ultimo Rilevato: **{ultimo_prezzo:.2f}** (**{pnl_val:+.2f}%**)")
+                        ultimo_prezzo = df_hist['Close'].iloc[-1]
+                        guadagno = ultimo_prezzo >= prezzo_acquisto
+                        pnl_val = ((ultimo_prezzo - prezzo_acquisto) / prezzo_acquisto) * 100
+                        if guadagno:
+                            st.success(f"📈 **Azione in Guadagno!** | Prezzo Acquisto: **{prezzo_acquisto:.2f}** | Ultimo Rilevato (Chiusura GG): **{ultimo_prezzo:.2f}** (**{pnl_val:+.2f}%**)")
                         else:
-                            chart_color = '#3498db'
-                            st.info(f"ℹ️ Prezzo di acquisto non trovato per questo ticker nelle posizioni attive o storiche. | Ultimo Prezzo: **{ultimo_prezzo:.2f}**")
-                        
-                        # Creazione grafico base della linea dei prezzi
-                        base_chart = alt.Chart(df_prezzi_ticker).mark_line(
-                            point=True,
-                            color=chart_color,
-                            strokeWidth=3
-                        ).encode(
-                            x=alt.X('Data_Ora:T', title='Data e Ora'),
-                            y=alt.Y('Prezzo:Q', title='Prezzo Registrato', scale=alt.Scale(zero=False)),
-                            tooltip=['Data_Ora', 'Prezzo']
-                        ).properties(height=350)
-                        
-                        final_chart = base_chart
-                        
-                        # Aggiunge la linea del prezzo di acquisto (se disponibile)
-                        if prezzo_acquisto is not None and prezzo_acquisto > 0:
-                            # Linea orizzontale
-                            rule_df = pd.DataFrame({'Prezzo_Acquisto': [prezzo_acquisto]})
-                            rule_chart = alt.Chart(rule_df).mark_rule(
-                                color='#f39c12',
-                                strokeDash=[6, 4],
-                                strokeWidth=2
-                            ).encode(
-                                y='Prezzo_Acquisto:Q'
-                            )
-                            
-                            # Label per la linea posizionata alla fine del grafico (data più recente)
-                            max_date = df_prezzi_ticker['Data_Ora'].max()
-                            text_df = pd.DataFrame({
-                                'Data_Ora': [max_date],
-                                'Prezzo_Acquisto': [prezzo_acquisto],
-                                'Label': [f"Acquisto: {prezzo_acquisto:.2f}"]
-                            })
-                            text_chart = alt.Chart(text_df).mark_text(
-                                align='right',
-                                dx=-10,
-                                dy=-15,
-                                color='#f39c12',
-                                fontSize=11,
-                                fontWeight='bold'
-                            ).encode(
-                                x='Data_Ora:T',
-                                y='Prezzo_Acquisto:Q',
-                                text='Label:N'
-                            )
-                            
-                            final_chart = alt.layer(base_chart, rule_chart, text_chart)
-                        
-                        st.altair_chart(final_chart, use_container_width=True)
-                    else:
-                        st.info(f"Nessun prezzo registrato ancora per {ticker_selezionato}. Verrà registrato al prossimo aggiornamento (se l'azione è attiva).")
-            else:
-                st.info("Il database dei prezzi è ancora vuoto. Inizierà a riempirsi nei prossimi minuti.")
+                            st.error(f"📉 **Azione in Perdita!** | Prezzo Acquisto: **{prezzo_acquisto:.2f}** | Ultimo Rilevato (Chiusura GG): **{ultimo_prezzo:.2f}** (**{pnl_val:+.2f}%**)")
+
+                    fig.update_layout(
+                        title=f'Andamento Giornaliero {ticker_selezionato}',
+                        yaxis_title='Prezzo',
+                        xaxis_title='Data',
+                        height=500,
+                        margin=dict(l=0, r=0, t=40, b=0)
+                    )
+                    
+                    st.plotly_chart(fig, use_container_width=True)
+                else:
+                    st.warning(f"Nessun dato storico trovato per {ticker_selezionato}. Controlla che il ticker sia valido su Yahoo Finance.")
+            except Exception as e:
+                st.error(f"Errore durante il recupero dei dati da yfinance: {e}")
     else:
         st.info("Aggiungi un'azione per iniziare a tracciarne il prezzo.")
 

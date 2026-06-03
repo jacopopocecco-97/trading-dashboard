@@ -3,3 +3,4 @@ yfinance
 gspread
 streamlit-autorefresh
 pandas
+plotly

@@ -11,7 +11,6 @@ from datetime import datetime
 SHEET_KEY = "1Y4qUgzJvrF6IE0Bv9DQzAo-SOkHqsx2CHQW-fBEoR3w"
 WORKSHEET_ATTIVE = "Posizioni_Attive"
 WORKSHEET_STORICO = "Storico"
-WORKSHEET_PREZZI = "Storico_Prezzi"
 WORKSHEET_PENDING = "Ordini_Pending"
 WORKSHEET_PORTAFOGLIO = "Storico_Portafoglio"
 
@@ -184,7 +183,6 @@ def run_bot():
     
     ws_attive = sheet.worksheet(WORKSHEET_ATTIVE)
     ws_storico = sheet.worksheet(WORKSHEET_STORICO)
-    ws_prezzi = sheet.worksheet(WORKSHEET_PREZZI)
     ws_pending = sheet.worksheet(WORKSHEET_PENDING)
     ws_portafoglio = sheet.worksheet(WORKSHEET_PORTAFOGLIO)
     
@@ -257,8 +255,6 @@ def run_bot():
             righe_da_chiudere = []
             righe_storico_da_aggiungere = []
             aggiornamenti_riga_attiva = []
-            righe_prezzi_da_loggare = []
-            tickers_loggati_questo_giro = set() # Per evitare duplicati se ci sono 2 posizioni uguali
             totale_open_pnl = 0.0
             pnl_attive_per_strategia = []
             
@@ -283,11 +279,6 @@ def run_bot():
                 valuta_borsa = get_stock_currency(ticker)
                 tasso = get_conversion_rate(valuta_borsa, valuta_inserita)
                 prezzo_corrente_convertito = prezzo_reale_borsa * tasso
-                
-                # Prepara i dati per il log storico (solo se non lo abbiamo già loggato in questo minuto)
-                if ticker and ticker not in tickers_loggati_questo_giro:
-                    righe_prezzi_da_loggare.append([ticker, round(prezzo_corrente_convertito, 2), now.strftime("%Y-%m-%d %H:%M:%S")])
-                    tickers_loggati_questo_giro.add(ticker)
                 
                 pnl = 0.0
                 if prezzo_ingresso > 0:
@@ -342,13 +333,6 @@ def run_bot():
                     ws_storico.append_row(riga["dati"], value_input_option='USER_ENTERED')
                     ws_attive.delete_rows(riga["row_index"])
                 print(f"Spostate {len(righe_da_chiudere)} posizioni nello storico.")
-
-            # Log storico prezzi (ogni 5 minuti = 300 secondi per evitare limiti API Google)
-            if (now - last_price_log_time).total_seconds() >= 300:
-                if righe_prezzi_da_loggare:
-                    ws_prezzi.append_rows(righe_prezzi_da_loggare, value_input_option='USER_ENTERED')
-                    print(f"Salvato storico prezzi per {len(righe_prezzi_da_loggare)} ticker.")
-                    last_price_log_time = now
                     
             # --- LOG PORTAFOGLIO P&L ---
             # Ogni 10 minuti (600 secondi)
