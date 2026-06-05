@@ -974,7 +974,7 @@ with tab3:
             
         st.divider()
         
-        col_g1, col_g2 = st.columns(2)
+        col_g1, col_g2, col_g3 = st.columns(3)
         with col_g1:
             st.subheader("Profitto Medio per Suggeritore")
             if 'Suggeritore' in df_filtered.columns:
@@ -1002,7 +1002,7 @@ with tab3:
                     df_mod = df_mod_clean.groupby('Modello')['P_L_Perc'].mean().reset_index()
                     if not df_mod.empty:
                         chart_mod = alt.Chart(df_mod).mark_bar().encode(
-                            x=alt.X('Modello', sort='-y', title='Strategia usata'),
+                            x=alt.X('Modello', sort='-y', title='Modello IA usato'),
                             y=alt.Y('P_L_Perc', title='Profitto/Perdita Media %'),
                             color=alt.condition(alt.datum.P_L_Perc > 0, alt.value('#2ecc71'), alt.value('#e74c3c')),
                             tooltip=['Modello', alt.Tooltip('P_L_Perc', format='.2f')]
@@ -1012,3 +1012,22 @@ with tab3:
                         st.info("Nessun modello con performance calcolabili.")
                 else:
                     st.info("Nessun modello inserito nelle operazioni.")
+
+        with col_g3:
+            st.subheader("Performance per Strategia")
+            if 'Strategia' in df_filtered.columns:
+                df_strat_clean = df_filtered[df_filtered['Strategia'].notna() & (df_filtered['Strategia'] != '')]
+                if not df_strat_clean.empty:
+                    df_strat = df_strat_clean.groupby('Strategia')['P_L_Perc'].mean().reset_index()
+                    if not df_strat.empty:
+                        chart_strat = alt.Chart(df_strat).mark_bar().encode(
+                            x=alt.X('Strategia', sort='-y', title='Tipo di Strategia'),
+                            y=alt.Y('P_L_Perc', title='Profitto/Perdita Media %'),
+                            color=alt.condition(alt.datum.P_L_Perc > 0, alt.value('#2ecc71'), alt.value('#e74c3c')),
+                            tooltip=['Strategia', alt.Tooltip('P_L_Perc', format='.2f')]
+                        ).properties(height=300)
+                        st.altair_chart(chart_strat, width="stretch")
+                    else:
+                        st.info("Nessuna strategia con performance calcolabili.")
+                else:
+                    st.info("Nessuna strategia inserita nelle operazioni.")
