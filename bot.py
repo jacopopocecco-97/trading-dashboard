@@ -234,11 +234,13 @@ def run_bot():
                         modello = row.get("Modello", "")
                         strategia = row.get("Strategia", "")
                         orizzonte = row.get("Orizzonte_Giorni", "")
+                        ml_conf = row.get("ML_Confidence", "")
+                        llm_score = row.get("LLM_Score", "")
                         
                         tasso = get_conversion_rate(get_stock_currency(ticker), valuta)
                         prezzo_entrata_convertito = prezzo_reale_borsa * tasso
                         
-                        nuova_riga_attive = [ticker, round(prezzo_entrata_convertito, 2), valuta, sl, tp1, tp2, perc_tp1, "FALSE", now.strftime("%Y-%m-%d %H:%M:%S"), sugg, modello, strategia, orizzonte]
+                        nuova_riga_attive = [ticker, round(prezzo_entrata_convertito, 2), valuta, sl, tp1, tp2, perc_tp1, "FALSE", now.strftime("%Y-%m-%d %H:%M:%S"), sugg, modello, strategia, orizzonte, ml_conf, llm_score]
                         righe_pending_da_spostare.append({"row_index": index + 2, "dati_attive": nuova_riga_attive})
                         
                 if righe_pending_da_spostare:
@@ -271,6 +273,8 @@ def run_bot():
                 modello = row.get("Modello", "")
                 strategia = row.get("Strategia", "")
                 orizzonte = row.get("Orizzonte_Giorni", "")
+                ml_conf = row.get("ML_Confidence", "")
+                llm_score = row.get("LLM_Score", "")
                 
                 prezzo_reale_borsa = get_current_price(ticker)
                 if prezzo_reale_borsa is None:
@@ -292,13 +296,13 @@ def run_bot():
                     quota = f"{100 - perc_tp1}%" if tp1_raggiunto else "100%"
                     righe_da_chiudere.append({
                         "row_index": index + 2,
-                        "dati": [ticker, prezzo_ingresso, round(prezzo_corrente_convertito, 2), valuta_inserita, round(pnl, 2), "SL", quota, row.get("Data_Ora", ""), now.strftime("%Y-%m-%d %H:%M:%S"), suggeritore, modello, strategia, orizzonte]
+                        "dati": [ticker, prezzo_ingresso, round(prezzo_corrente_convertito, 2), valuta_inserita, round(pnl, 2), "SL", quota, row.get("Data_Ora", ""), now.strftime("%Y-%m-%d %H:%M:%S"), suggeritore, modello, strategia, orizzonte, ml_conf, llm_score]
                     })
                 elif tp1 > 0 and not tp1_raggiunto and prezzo_corrente_convertito >= tp1:
                     print(f"✅ TAKE PROFIT 1 HIT per {ticker}! Prezzo: {prezzo_corrente_convertito:.2f}")
                     if tp2 > 0 and perc_tp1 < 100:
                         # Partial close at TP1
-                        righe_storico_da_aggiungere.append([ticker, prezzo_ingresso, round(prezzo_corrente_convertito, 2), valuta_inserita, round(pnl, 2), "TP1", f"{perc_tp1}%", row.get("Data_Ora", ""), now.strftime("%Y-%m-%d %H:%M:%S"), suggeritore, modello, strategia, orizzonte])
+                        righe_storico_da_aggiungere.append([ticker, prezzo_ingresso, round(prezzo_corrente_convertito, 2), valuta_inserita, round(pnl, 2), "TP1", f"{perc_tp1}%", row.get("Data_Ora", ""), now.strftime("%Y-%m-%d %H:%M:%S"), suggeritore, modello, strategia, orizzonte, ml_conf, llm_score])
                         # Move SL to breakeven (prezzo_ingresso) and set TP1_Raggiunto = TRUE
                         # Supponendo che l'ordine delle colonne sia fisso: 
                         # A=Ticker, B=Prezzo_Entrata, C=Valuta_Entrata, D=Stop_Loss, E=TP1, F=TP2, G=Perc_TP1, H=TP1_Raggiunto
@@ -307,14 +311,14 @@ def run_bot():
                         # Full close
                         righe_da_chiudere.append({
                             "row_index": index + 2,
-                            "dati": [ticker, prezzo_ingresso, round(prezzo_corrente_convertito, 2), valuta_inserita, round(pnl, 2), "TP", "100%", row.get("Data_Ora", ""), now.strftime("%Y-%m-%d %H:%M:%S"), suggeritore, modello, strategia, orizzonte]
+                            "dati": [ticker, prezzo_ingresso, round(prezzo_corrente_convertito, 2), valuta_inserita, round(pnl, 2), "TP", "100%", row.get("Data_Ora", ""), now.strftime("%Y-%m-%d %H:%M:%S"), suggeritore, modello, strategia, orizzonte, ml_conf, llm_score]
                         })
                 elif tp2 > 0 and tp1_raggiunto and prezzo_corrente_convertito >= tp2:
                     print(f"✅ TAKE PROFIT 2 HIT per {ticker}! Prezzo: {prezzo_corrente_convertito:.2f}")
                     quota = f"{100 - perc_tp1}%"
                     righe_da_chiudere.append({
                         "row_index": index + 2,
-                        "dati": [ticker, prezzo_ingresso, round(prezzo_corrente_convertito, 2), valuta_inserita, round(pnl, 2), "TP2", quota, row.get("Data_Ora", ""), now.strftime("%Y-%m-%d %H:%M:%S"), suggeritore, modello, strategia, orizzonte]
+                        "dati": [ticker, prezzo_ingresso, round(prezzo_corrente_convertito, 2), valuta_inserita, round(pnl, 2), "TP2", quota, row.get("Data_Ora", ""), now.strftime("%Y-%m-%d %H:%M:%S"), suggeritore, modello, strategia, orizzonte, ml_conf, llm_score]
                     })
             
             # Esegui la chiusura se necessario

@@ -142,8 +142,8 @@ ws_portafoglio = get_worksheet(client, WORKSHEET_PORTAFOGLIO)
 if not ws_attive or not ws_storico:
     st.stop()
 
-# Layout con tre tab
-tab1, tab2, tab3 = st.tabs(["📊 Dashboard Posizioni", "➕ Nuova Posizione", "📈 Statistiche"])
+# Layout con quattro tab
+tab1, tab2, tab3, tab4 = st.tabs(["📊 Dashboard Posizioni", "➕ Nuova Posizione", "📈 Statistiche", "🧠 Quant-Mental Screener"])
 
 # Inizializzazione chiavi per i form
 if 'form_ticker' not in st.session_state:
@@ -168,6 +168,10 @@ if 'form_tp2' not in st.session_state:
     st.session_state.form_tp2 = 0.0
 if 'form_perc_tp1' not in st.session_state:
     st.session_state.form_perc_tp1 = 50
+if 'form_ml_confidence' not in st.session_state:
+    st.session_state.form_ml_confidence = ""
+if 'form_llm_score' not in st.session_state:
+    st.session_state.form_llm_score = ""
 
 # --- TAB 1: DASHBOARD ---
 with tab1:
@@ -445,7 +449,9 @@ IMPORTANTE: Alla fine della tua analisi, DEVI fornire i dati delle azioni che ha
   "suggeritore": "Inserisci il tuo nome (es. Gemini o Claude)",
   "modello": "Inserisci la tua versione esatta (es. Gemini 1.5 Pro, Claude 3 Opus)",
   "strategia": "{strategia_scelta}",
-  "orizzonte_giorni": 14
+  "orizzonte_giorni": 14,
+  "ml_confidence": "75.5%",
+  "llm_score": "80"
 }}
 ```"""
         st.markdown("**1. Copia questo prompt (con le date di oggi aggiornate) e incollalo su Gemini o Claude:**")
@@ -471,6 +477,8 @@ IMPORTANTE: Alla fine della tua analisi, DEVI fornire i dati delle azioni che ha
                     st.session_state.form_range_max = float(dati_ia.get("range_max", 0.0))
                     st.session_state.form_strategia = dati_ia.get("strategia", "Speculativo")
                     st.session_state.form_orizzonte = int(dati_ia.get("orizzonte_giorni", 0))
+                    st.session_state.form_ml_confidence = str(dati_ia.get("ml_confidence", ""))
+                    st.session_state.form_llm_score = str(dati_ia.get("llm_score", ""))
                     st.success("Dati importati con successo! Scorri giù per cercare il prezzo e confermare.")
                 else:
                     st.error("Nessun JSON valido trovato nel testo incollato.")
@@ -511,12 +519,14 @@ IMPORTANTE: Alla fine della tua analisi, DEVI fornire i dati delle azioni che ha
         auto_range = st.checkbox("Attiva Range ±1% automatico dal prezzo attuale", value=False)
 
     st.markdown("---")
-    st.subheader("Informazioni Aggiuntive")
+    st.subheader("Informazioni Aggiuntive e Score")
     col6, col7 = st.columns(2)
     with col6:
         suggeritore_input = st.text_input("Suggeritore (es. Nome, Telegram, Analisi Tecnica)", key="form_suggeritore")
+        ml_confidence_input = st.text_input("ML Confidence / Prob. Successo (es. 65.5%)", key="form_ml_confidence")
     with col7:
         modello_input = st.text_input("Modello o Strategia (es. Breakout, RSI, Scalping)", key="form_modello")
+        llm_score_input = st.text_input("LLM Score (es. 80)", key="form_llm_score")
 
     st.markdown("---")
     st.subheader("Dettagli di Entrata")
@@ -578,7 +588,7 @@ IMPORTANTE: Alla fine della tua analisi, DEVI fornire i dati delle azioni che ha
                     if is_pending:
                         st.write(f"Vuoi inviare l'ordine ai **PENDING** con range di ingresso [{p_min} - {p_max}], SL a {sl_input}, TP1 a {tp_input}, TP2 a {tp2_input}?")
                         if st.button("⏳ Salva come Ordine Pending"):
-                            nuova_riga = [p['ticker'], p_min, p_max, p['valuta'], sl_input, tp_input, tp2_input, perc_tp1_input, data_ora_str, suggeritore_input, modello_input, strategia_input, orizzonte_input]
+                            nuova_riga = [p['ticker'], p_min, p_max, p['valuta'], sl_input, tp_input, tp2_input, perc_tp1_input, data_ora_str, suggeritore_input, modello_input, strategia_input, orizzonte_input, ml_confidence_input, llm_score_input]
                             try:
                                 ws_pending.append_row(nuova_riga, value_input_option='USER_ENTERED')
                                 st.success(f"Ordine pending su {p['ticker']} aggiunto con successo!")
@@ -591,7 +601,7 @@ IMPORTANTE: Alla fine della tua analisi, DEVI fornire i dati delle azioni che ha
                         st.write(f"Vuoi confermare l'apertura **IMMEDIATA** a questo prezzo con SL a {sl_input}, TP1 a {tp_input}, TP2 a {tp2_input}?")
                         if st.button("✅ Conferma e Apri Posizione"):
                             # Aggiungiamo anche il flag TP1_Raggiunto = "FALSE"
-                            nuova_riga = [p['ticker'], p['prezzo'], p['valuta'], sl_input, tp_input, tp2_input, perc_tp1_input, "FALSE", data_ora_str, suggeritore_input, modello_input, strategia_input, orizzonte_input]
+                            nuova_riga = [p['ticker'], p['prezzo'], p['valuta'], sl_input, tp_input, tp2_input, perc_tp1_input, "FALSE", data_ora_str, suggeritore_input, modello_input, strategia_input, orizzonte_input, ml_confidence_input, llm_score_input]
                             try:
                                 ws_attive.append_row(nuova_riga, value_input_option='USER_ENTERED')
                                 st.success(f"Posizione su {p['ticker']} aggiunta con successo! Aggiornamento dashboard...")
@@ -621,7 +631,7 @@ IMPORTANTE: Alla fine della tua analisi, DEVI fornire i dati delle azioni che ha
                         p_min = round(prezzo_input * 0.99, 2)
                         p_max = round(prezzo_input * 1.01, 2)
                         
-                    nuova_riga = [ticker_input, p_min, p_max, valuta_input, sl_input, tp_input, tp2_input, perc_tp1_input, data_ora_str, suggeritore_input, modello_input, strategia_input, orizzonte_input]
+                    nuova_riga = [ticker_input, p_min, p_max, valuta_input, sl_input, tp_input, tp2_input, perc_tp1_input, data_ora_str, suggeritore_input, modello_input, strategia_input, orizzonte_input, ml_confidence_input, llm_score_input]
                     try:
                         ws_pending.append_row(nuova_riga, value_input_option='USER_ENTERED')
                         st.success(f"Ordine pending su {ticker_input} aggiunto con successo!")
@@ -631,7 +641,7 @@ IMPORTANTE: Alla fine della tua analisi, DEVI fornire i dati delle azioni che ha
                         st.error(f"Errore durante il salvataggio: {e}")
                 else:
                     # Aggiungiamo anche il flag TP1_Raggiunto = "FALSE"
-                    nuova_riga = [ticker_input, prezzo_input, valuta_input, sl_input, tp_input, tp2_input, perc_tp1_input, "FALSE", data_ora_str, suggeritore_input, modello_input, strategia_input, orizzonte_input]
+                    nuova_riga = [ticker_input, prezzo_input, valuta_input, sl_input, tp_input, tp2_input, perc_tp1_input, "FALSE", data_ora_str, suggeritore_input, modello_input, strategia_input, orizzonte_input, ml_confidence_input, llm_score_input]
                     try:
                         ws_attive.append_row(nuova_riga, value_input_option='USER_ENTERED')
                         st.success(f"Posizione manuale su {ticker_input} aggiunta con successo! Aggiornamento dashboard...")
@@ -1031,3 +1041,135 @@ with tab3:
                         st.info("Nessuna strategia con performance calcolabili.")
                 else:
                     st.info("Nessuna strategia inserita nelle operazioni.")
+
+# --- TAB 4: QUANT-MENTAL SCREENER ---
+with tab4:
+    st.header("🧠 Quant-Mental Screener (Hybrid Strategy)")
+    st.markdown("Questa sezione implementa la **Hybrid Quant-Mental Alpha** descritta nell'Implementation Plan. Filtra le azioni usando l'analisi tecnica (Stage 2 di Weinstein) e utilizza un modello di Machine Learning (Random Forest) per prevedere la probabilità di successo a breve termine, calcolando poi la size ideale con il Targeting Volatilità.")
+    
+    ticker_list_str = st.text_input("Inserisci i Ticker da analizzare (separati da virgola):", "AAPL, MSFT, TSLA, UCG.MI, PRY.MI, NVDA, AMZN")
+    
+    if st.button("🚀 Avvia Analisi Quant-Mental"):
+        tickers = [t.strip().upper() for t in ticker_list_str.split(",") if t.strip()]
+        
+        if not tickers:
+            st.error("Inserisci almeno un ticker.")
+        else:
+            with st.spinner("1. Analisi del Regime di Mercato (S&P 500)..."):
+                try:
+                    sp500 = yf.download("^GSPC", period="1y", progress=False)
+                    vix = yf.download("^VIX", period="5d", progress=False)
+                    # Fix per yfinance returns che potrebbero essere pd.Series o float
+                    sp500_close = sp500['Close'].iloc[-1].item() if hasattr(sp500['Close'].iloc[-1], 'item') else float(sp500['Close'].iloc[-1])
+                    
+                    sma200_series = sp500['Close'].rolling(window=200).mean()
+                    sp500_sma200 = sma200_series.iloc[-1].item() if hasattr(sma200_series.iloc[-1], 'item') else float(sma200_series.iloc[-1])
+                    
+                    vix_close = vix['Close'].iloc[-1].item() if hasattr(vix['Close'].iloc[-1], 'item') else float(vix['Close'].iloc[-1])
+                    
+                    is_bull_regime = sp500_close > sp500_sma200 and vix_close < 25
+                    
+                    if is_bull_regime:
+                        st.success(f"✅ **Regime di Mercato:** TORO / BASSA VOLATILITÀ (S&P500 > SMA200, VIX: {vix_close:.2f}). Condizioni favorevoli.")
+                    else:
+                        st.error(f"⚠️ **Regime di Mercato:** ORSO / ALTA VOLATILITÀ (S&P500 < SMA200 o VIX alto: {vix_close:.2f}). ATTENZIONE: Si consiglia di ridurre l'esposizione.")
+                except Exception as e:
+                    st.warning(f"Impossibile analizzare il regime di mercato: {e}")
+                    is_bull_regime = True
+
+            st.write("---")
+            st.write("### Risultati Analisi Titoli")
+            
+            import numpy as np
+            from sklearn.ensemble import RandomForestClassifier
+            
+            risultati = []
+            prog_bar = st.progress(0)
+            
+            for idx, ticker in enumerate(tickers):
+                try:
+                    df = yf.download(ticker, period="2y", progress=False)
+                    if df.empty or len(df) < 250:
+                        continue
+                        
+                    if isinstance(df.columns, pd.MultiIndex):
+                        df.columns = df.columns.get_level_values(0)
+                    
+                    close = df['Close']
+                    high = df['High']
+                    low = df['Low']
+                    
+                    df['SMA200'] = close.rolling(window=200).mean()
+                    df['SMA50'] = close.rolling(window=50).mean()
+                    
+                    tr1 = high - low
+                    tr2 = abs(high - close.shift())
+                    tr3 = abs(low - close.shift())
+                    tr = pd.concat([tr1, tr2, tr3], axis=1).max(axis=1)
+                    df['ATR'] = tr.rolling(window=14).mean()
+                    
+                    delta = close.diff()
+                    gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
+                    loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
+                    rs = gain / loss
+                    df['RSI'] = 100 - (100 / (1 + rs))
+                    
+                    current_close = close.iloc[-1].item() if hasattr(close.iloc[-1], 'item') else float(close.iloc[-1])
+                    current_sma200 = df['SMA200'].iloc[-1].item() if hasattr(df['SMA200'].iloc[-1], 'item') else float(df['SMA200'].iloc[-1])
+                    current_sma50 = df['SMA50'].iloc[-1].item() if hasattr(df['SMA50'].iloc[-1], 'item') else float(df['SMA50'].iloc[-1])
+                    current_atr = df['ATR'].iloc[-1].item() if hasattr(df['ATR'].iloc[-1], 'item') else float(df['ATR'].iloc[-1])
+                    
+                    if pd.isna(current_sma200) or current_close < current_sma200:
+                        risultati.append({"Ticker": ticker, "Status": "Scartato (Sotto SMA200)", "Prob_Successo": "-", "Size_Consigliata": "-"})
+                        prog_bar.progress((idx + 1) / len(tickers))
+                        continue
+                        
+                    df_ml = df.dropna().copy()
+                    df_ml['Dist_SMA50'] = (df_ml['Close'] - df_ml['SMA50']) / df_ml['SMA50']
+                    df_ml['Dist_SMA200'] = (df_ml['Close'] - df_ml['SMA200']) / df_ml['SMA200']
+                    df_ml['Return_5d'] = df_ml['Close'].pct_change(5)
+                    df_ml['Target'] = (df_ml['Close'].shift(-5) > df_ml['Close'] * 1.02).astype(int)
+                    df_ml = df_ml.dropna()
+                    
+                    if len(df_ml) < 100:
+                        risultati.append({"Ticker": ticker, "Status": "Dati insufficienti per ML", "Prob_Successo": "-", "Size_Consigliata": "-"})
+                        prog_bar.progress((idx + 1) / len(tickers))
+                        continue
+                        
+                    features = ['RSI', 'Dist_SMA50', 'Dist_SMA200', 'Return_5d', 'ATR']
+                    X = df_ml[features]
+                    y = df_ml['Target']
+                    
+                    rf = RandomForestClassifier(n_estimators=100, max_depth=5, random_state=42)
+                    rf.fit(X, y)
+                    
+                    last_row = df.iloc[-1:].copy()
+                    last_row['Dist_SMA50'] = (last_row['Close'] - last_row['SMA50']) / last_row['SMA50']
+                    last_row['Dist_SMA200'] = (last_row['Close'] - last_row['SMA200']) / last_row['SMA200']
+                    last_row['Return_5d'] = float(df['Close'].iloc[-1]) / float(df['Close'].iloc[-6]) - 1
+                    
+                    X_new = last_row[features]
+                    prob = rf.predict_proba(X_new)[0][1]
+                    prob_percent = prob * 100
+                    
+                    if prob_percent >= 60:
+                        status = "✅ APPROVATO"
+                        stop_loss_dist = 1.5 * current_atr
+                        risk_per_share = stop_loss_dist
+                        suggested_shares = 100 / risk_per_share if risk_per_share > 0 else 0
+                        suggested_size_usd = suggested_shares * current_close
+                        size_str = f"${suggested_size_usd:.2f} (Rischio 1% = $100)"
+                    else:
+                        status = f"❌ Scartato (Prob. {prob_percent:.1f}% < 60%)"
+                        size_str = "-"
+                        
+                    risultati.append({"Ticker": ticker, "Status": status, "Prob_Successo": f"{prob_percent:.1f}%", "Size_Consigliata": size_str})
+                    
+                except Exception as e:
+                    risultati.append({"Ticker": ticker, "Status": f"Errore: {str(e)}", "Prob_Successo": "-", "Size_Consigliata": "-"})
+                    
+                prog_bar.progress((idx + 1) / len(tickers))
+                
+            if risultati:
+                df_res = pd.DataFrame(risultati)
+                st.dataframe(df_res, width="stretch")
